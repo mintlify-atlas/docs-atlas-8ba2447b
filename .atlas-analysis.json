@@ -1,0 +1,125 @@
+{
+  "projectType": "saas",
+  "projectName": "ActumX",
+  "projectDescription": "A SaaS platform for monetizing APIs using the x402 payment protocol with agent-based Solana wallet management.",
+  "theme": "aspen",
+  "primaryColor": "#6366f1",
+  "lightColor": "#818cf8",
+  "darkColor": "#4f46e5",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "architecture"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/x402-protocol",
+              "concepts/agents",
+              "concepts/api-keys",
+              "concepts/billing"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/setup",
+              "guides/creating-agents",
+              "guides/managing-api-keys",
+              "guides/billing-credits",
+              "guides/making-paid-requests"
+            ]
+          },
+          {
+            "group": "Dashboard",
+            "pages": [
+              "dashboard/overview",
+              "dashboard/agents",
+              "dashboard/api-keys",
+              "dashboard/billing",
+              "dashboard/transactions"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "api/introduction",
+              "api/authentication"
+            ]
+          },
+          {
+            "group": "Endpoints",
+            "pages": [
+              "api/agents",
+              "api/api-keys",
+              "api/billing",
+              "api/x402",
+              "api/activity"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Development",
+        "groups": [
+          {
+            "group": "Local Setup",
+            "pages": [
+              "development/environment",
+              "development/database",
+              "development/running-locally"
+            ]
+          },
+          {
+            "group": "Deployment",
+            "pages": [
+              "development/deployment",
+              "development/environment-variables"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "x402 payment protocol for API monetization",
+    "Solana-based agent wallet management",
+    "Credit-based billing system",
+    "API key generation and management",
+    "Real-time usage tracking and transaction history",
+    "MCP (Model Context Protocol) integration",
+    "Full-stack dashboard with Next.js",
+    "Elysia + Bun backend for high performance"
+  ],
+  "publicApiSurface": [
+    "POST /auth/register",
+    "POST /auth/login",
+    "GET /v1/agents",
+    "POST /v1/agents",
+    "POST /v1/agents/:agentId/fund-devnet",
+    "GET /v1/api-keys",
+    "POST /v1/api-keys",
+    "DELETE /v1/api-keys/:id",
+    "GET /v1/billing/summary",
+    "POST /v1/billing/top-up",
+    "GET /v1/billing/payment-intents",
+    "POST /v1/x402/settle",
+    "GET /v1/protected/quote",
+    "GET /mcp",
+    "POST /mcp",
+    "GET /v1/activity"
+  ]
+}
