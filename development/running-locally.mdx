@@ -1,0 +1,358 @@
+---
+title: Running Locally
+description: Start the ActumX API and Dashboard in development mode
+---
+
+## Prerequisites
+
+Before running locally, ensure you have:
+
+1. [Installed all required tools](/development/environment)
+2. [Set up PostgreSQL](/development/database)
+3. [Configured environment variables](/development/environment-variables)
+
+## Quick Start
+
+### 1. Start PostgreSQL
+
+If PostgreSQL isn't already running:
+
+```bash
+docker run --name actumx-postgres \
+  -e POSTGRES_USER=postgres \
+  -e POSTGRES_PASSWORD=postgres \
+  -e POSTGRES_DB=x402 \
+  -p 5432:5432 \
+  -d postgres:latest
+```
+
+### 2. Start the API
+
+Navigate to the API directory and set up:
+
+```bash
+cd api
+cp .env.example .env
+bun install
+bun run db:migrate
+```
+
+Start the development server:
+
+```bash
+bun run dev
+```
+
+The API will start on **http://localhost:3001** with hot-reload enabled.
+
+### 3. Start the Dashboard
+
+In a new terminal, navigate to the dashboard directory:
+
+```bash
+cd dashboard
+cp .env.example .env.local
+pnpm install
+```
+
+Start the development server:
+
+<CodeGroup>
+```bash pnpm
+pnpm dev
+```
+
+```bash npm
+npm run dev
+```
+
+```bash yarn
+yarn dev
+```
+</CodeGroup>
+
+The Dashboard will start on **http://localhost:3000**.
+
+## API Development
+
+### Available Scripts
+
+The API (located in `api/package.json`) provides these npm scripts:
+
+#### Development
+
+```bash
+bun run dev
+```
+
+Runs the API in watch mode. The server automatically restarts when you make changes to any TypeScript file.
+
+#### Start Production
+
+```bash
+bun run start
+```
+
+Runs the API once without watch mode (production-style).
+
+#### Type Checking
+
+```bash
+bun run check
+```
+
+Runs TypeScript type checking without emitting files.
+
+#### Database Operations
+
+```bash
+# Generate new migration from schema changes
+bun run db:generate
+
+# Run pending migrations
+bun run db:migrate
+
+# Reset database and re-run all migrations
+bun run db:reset
+```
+
+### API Configuration
+
+The API requires these environment variables in `api/.env`:
+
+```bash
+PORT=3001
+DATABASE_URL=postgres://postgres:postgres@localhost:5432/x402
+BETTER_AUTH_URL=http://localhost:3001
+DASHBOARD_ORIGIN=http://localhost:3000
+BETTER_AUTH_SECRET=dev-only-better-auth-secret-change-me-32-plus-characters
+SOLANA_RPC_URL=https://api.devnet.solana.com
+```
+
+### Accessing the API
+
+Once running, you can access:
+
+- **API Base**: http://localhost:3001
+- **OpenAPI Docs**: http://localhost:3001/swagger (if configured)
+
+## Dashboard Development
+
+### Available Scripts
+
+The Dashboard (located in `dashboard/package.json`) provides these scripts:
+
+#### Development
+
+<CodeGroup>
+```bash pnpm
+pnpm dev
+```
+
+```bash npm
+npm run dev
+```
+
+```bash yarn
+yarn dev
+```
+</CodeGroup>
+
+Starts Next.js in development mode with hot-reload.
+
+#### Build
+
+<CodeGroup>
+```bash pnpm
+pnpm build
+```
+
+```bash npm
+npm run build
+```
+
+```bash yarn
+yarn build
+```
+</CodeGroup>
+
+Creates an optimized production build.
+
+#### Start Production
+
+<CodeGroup>
+```bash pnpm
+pnpm start
+```
+
+```bash npm
+npm start
+```
+
+```bash yarn
+yarn start
+```
+</CodeGroup>
+
+Runs the production build (must run `build` first).
+
+#### Linting
+
+<CodeGroup>
+```bash pnpm
+pnpm lint
+```
+
+```bash npm
+npm run lint
+```
+
+```bash yarn
+yarn lint
+```
+</CodeGroup>
+
+Runs ESLint to check for code quality issues.
+
+### Dashboard Configuration
+
+The Dashboard requires this environment variable in `dashboard/.env.local`:
+
+```bash
+NEXT_PUBLIC_API_BASE_URL=http://localhost:3001
+```
+
+### Accessing the Dashboard
+
+Once running, open http://localhost:3000 in your browser.
+
+## Development Workflow
+
+Typical development workflow:
+
+1. **Start PostgreSQL** (if not running)
+2. **Start API** in one terminal (`bun run dev`)
+3. **Start Dashboard** in another terminal (`pnpm dev`)
+4. Make changes to code - both servers hot-reload automatically
+5. Run migrations when schema changes: `bun run db:generate && bun run db:migrate`
+
+## Troubleshooting Common Issues
+
+### Port Already in Use
+
+If port 3001 (API) or 3000 (Dashboard) is already in use:
+
+```bash
+# Find process using port 3001
+lsof -i :3001
+
+# Kill the process
+kill -9 <PID>
+```
+
+Or change the port in your environment variables.
+
+### Database Connection Failed
+
+If the API can't connect to PostgreSQL:
+
+1. Verify PostgreSQL is running:
+   ```bash
+   docker ps | grep actumx-postgres
+   ```
+
+2. Check your `DATABASE_URL` in `api/.env`
+
+3. Test the connection:
+   ```bash
+   docker exec -it actumx-postgres psql -U postgres -d x402
+   ```
+
+### API Not Found (Dashboard)
+
+If the Dashboard can't reach the API:
+
+1. Verify the API is running on port 3001
+2. Check `NEXT_PUBLIC_API_BASE_URL` in `dashboard/.env.local`
+3. Ensure CORS is configured correctly (check `DASHBOARD_ORIGIN` in API)
+
+### Module Not Found
+
+If you get module not found errors:
+
+```bash
+# In api/
+bun install
+
+# In dashboard/
+pnpm install
+```
+
+### Type Errors
+
+Run type checking to see detailed errors:
+
+```bash
+# In api/
+bun run check
+
+# In dashboard/
+pnpm tsc --noEmit
+```
+
+### Migration Issues
+
+If migrations fail or schema is out of sync:
+
+```bash
+# Reset database and start fresh
+cd api
+bun run db:reset
+```
+
+<Warning>
+`db:reset` will delete all data in your database.
+</Warning>
+
+### Better Auth Errors
+
+If you see authentication errors:
+
+1. Verify `BETTER_AUTH_SECRET` is at least 32 characters
+2. Check `BETTER_AUTH_URL` matches your API URL
+3. Ensure `DASHBOARD_ORIGIN` matches your Dashboard URL
+
+### Solana RPC Issues
+
+If Solana integration fails:
+
+1. Verify `SOLANA_RPC_URL` is accessible
+2. Try using a different RPC endpoint:
+   - Devnet: `https://api.devnet.solana.com`
+   - Mainnet: `https://api.mainnet-beta.solana.com`
+
+## Performance Tips
+
+### Bun Watch Mode
+
+Bun's `--watch` flag is very fast but sometimes misses changes. If a change isn't detected, save the file again or restart the server.
+
+### Next.js Fast Refresh
+
+Next.js Fast Refresh should work automatically. If it stops working:
+
+1. Ensure your components are named exports or default exports
+2. Avoid anonymous components
+3. Restart the dev server
+
+### Database Queries
+
+In development, Drizzle logs all queries when `verbose: true` is set in `drizzle.config.ts`. This helps debug but can be noisy.
+
+## Next Steps
+
+Now that you have the application running:
+
+- Explore the [system architecture](/architecture)
+- Learn about [deployment](/development/deployment)
+- Review [environment variables](/development/environment-variables)

@@ -1,0 +1,356 @@
+---
+title: 'Billing and Credits'
+description: 'Manage your account balance and track spending'
+icon: 'credit-card'
+---
+
+## How Credits Work
+
+ActumX uses a credit-based billing system:
+
+- **Credits** are stored in cents (USD)
+- Top up your balance to use paid endpoints
+- Credits are deducted when you settle x402 payments
+- View your balance and transaction history in real-time
+
+<Info>
+  In the demo version, the payment system is simulated. Real payment processors (Stripe, etc.) would be integrated for production.
+</Info>
+
+## Topping Up Credits
+
+<Steps>
+  <Step title="Make a Top-Up Request">
+    Add credits to your account by making a POST request:
+    
+    <CodeGroup>
+    ```bash cURL
+    curl -X POST http://localhost:3001/v1/billing/top-up \
+      -H "Content-Type: application/json" \
+      -H "Cookie: YOUR_SESSION_COOKIE" \
+      -d '{
+        "amountCents": 5000
+      }'
+    ```
+    
+    ```javascript JavaScript
+    const response = await fetch('http://localhost:3001/v1/billing/top-up', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+      body: JSON.stringify({
+        amountCents: 5000  // $50.00
+      })
+    });
+    
+    const result = await response.json();
+    console.log(result);
+    ```
+    
+    ```python Python
+    import requests
+    
+    response = requests.post(
+        'http://localhost:3001/v1/billing/top-up',
+        json={'amountCents': 5000},  # $50.00
+        cookies={'session': 'YOUR_SESSION_COOKIE'}
+    )
+    
+    result = response.json()
+    print(result)
+    ```
+    </CodeGroup>
+    
+    **Response:**
+    ```json
+    {
+      "paymentIntentId": "pi_abc123def456",
+      "addedCents": 5000,
+      "balanceCents": 5000
+    }
+    ```
+  </Step>
+
+  <Step title="Verify Your Balance">
+    After topping up, your new balance is returned immediately. The system automatically:
+    
+    1. Creates a payment intent with status `settled`
+    2. Adds a credit entry to your ledger
+    3. Calculates your new total balance
+    
+    From `api/src/modules/billing/service.ts:68-86`:
+    ```typescript
+    await db.insert(paymentIntents).values({
+      id: intentId,
+      userId: auth.user.id,
+      amountCents: payload.amountCents,
+      status: "settled",
+      // ...
+    });
+    
+    await db.insert(creditLedger).values({
+      id: newId("ledger"),
+      userId: auth.user.id,
+      direction: "credit",
+      amountCents: payload.amountCents,
+      source: "top_up",
+      // ...
+    });
+    ```
+  </Step>
+</Steps>
+
+## Amount Limits
+
+Top-up amounts must be between **$1.00 and $1,000.00**:
+
+- **Minimum:** 100 cents ($1.00)
+- **Maximum:** 100,000 cents ($1,000.00)
+
+<Warning>
+  Requests outside this range will return a 400 error:
+  ```json
+  {
+    "error": "amount_must_be_between_100_and_100000_cents"
+  }
+  ```
+</Warning>
+
+## Viewing Your Balance
+
+Get a complete billing summary for your account:
+
+```bash
+curl http://localhost:3001/v1/billing/summary \
+  -H "Cookie: YOUR_SESSION_COOKIE"
+```
+
+**Response:**
+```json
+{
+  "balanceCents": 4975,
+  "topUpTotalCents": 5000,
+  "usageTotalCents": 25,
+  "activeApiKeys": 2,
+  "x402Transactions": 1
+}
+```
+
+### Response Fields
+
+<ResponseField name="balanceCents" type="number">
+  Your current account balance in cents (USD)
+</ResponseField>
+
+<ResponseField name="topUpTotalCents" type="number">
+  Total amount you've added to your account
+</ResponseField>
+
+<ResponseField name="usageTotalCents" type="number">
+  Total amount spent on API requests
+</ResponseField>
+
+<ResponseField name="activeApiKeys" type="number">
+  Number of non-revoked API keys
+</ResponseField>
+
+<ResponseField name="x402Transactions" type="number">
+  Total count of x402 payment transactions
+</ResponseField>
+
+## Payment History
+
+View your complete payment history:
+
+```bash
+curl http://localhost:3001/v1/billing/payment-intents \
+  -H "Cookie: YOUR_SESSION_COOKIE"
+```
+
+**Response:**
+```json
+{
+  "intents": [
+    {
+      "id": "pi_abc123def456",
+      "userId": "user_xyz789",
+      "amountCents": 5000,
+      "status": "settled",
+      "providerReference": "dummy_provider_ref123",
+      "createdAt": "2026-03-03T22:30:00.000Z",
+      "updatedAt": "2026-03-03T22:30:00.000Z"
+    },
+    {
+      "id": "pi_def456ghi789",
+      "userId": "user_xyz789",
+      "amountCents": 10000,
+      "status": "settled",
+      "providerReference": "dummy_provider_ref456",
+      "createdAt": "2026-03-01T15:00:00.000Z",
+      "updatedAt": "2026-03-01T15:00:00.000Z"
+    }
+  ]
+}
+```
+
+<Info>
+  The endpoint returns the 50 most recent payment intents, ordered by creation date (newest first).
+</Info>
+
+## Understanding Credit Consumption
+
+Credits are consumed when you:
+
+1. Make requests to x402 paid endpoints
+2. Settle payment challenges
+3. Complete transactions
+
+### Example Cost Structure
+
+<CardGroup cols={2}>
+  <Card title="Quote Endpoint" icon="dollar-sign">
+    **Cost:** 25 cents per request
+    
+    Endpoint: `GET /v1/protected/quote`
+  </Card>
+  
+  <Card title="Future Endpoints" icon="ellipsis">
+    More paid endpoints with varying costs will be added
+  </Card>
+</CardGroup>
+
+From `api/src/config/constants.ts:8`:
+```typescript
+export const X402_PAID_REQUEST_COST_CENTS = 25;
+```
+
+## Credit Ledger System
+
+ActumX maintains a double-entry ledger for all credit movements:
+
+### Credit Entries (Money In)
+```json
+{
+  "direction": "credit",
+  "amountCents": 5000,
+  "source": "top_up",
+  "referenceId": "pi_abc123def456"
+}
+```
+
+### Debit Entries (Money Out)
+```json
+{
+  "direction": "debit",
+  "amountCents": 25,
+  "source": "api_request",
+  "referenceId": "x402tx_xyz789"
+}
+```
+
+<Info>
+  Your balance is calculated by summing all credits and subtracting all debits from the ledger.
+</Info>
+
+## Handling Insufficient Balance
+
+When trying to settle a payment without sufficient credits:
+
+**Request:**
+```bash
+curl -X POST http://localhost:3001/v1/x402/settle \
+  -H "Authorization: Bearer xk_live_..." \
+  -H "Content-Type: application/json" \
+  -d '{"paymentId": "x402tx_abc123"}'
+```
+
+**Response (402 Payment Required):**
+```json
+{
+  "error": "insufficient_balance",
+  "requiredCents": 25,
+  "balanceCents": 10,
+  "message": "Top up balance in dashboard before settling this x402 payment."
+}
+```
+
+<Warning>
+  Always ensure you have sufficient balance before attempting to settle x402 payments.
+</Warning>
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Maintain a Buffer Balance">
+    Keep extra credits in your account to avoid failed requests:
+    
+    - Calculate your expected monthly usage
+    - Top up with 20-30% extra as a buffer
+    - Monitor your balance regularly
+  </Accordion>
+  
+  <Accordion title="Track Spending Patterns">
+    Use the billing summary to understand your usage:
+    
+    ```javascript
+    const summary = await fetch('/v1/billing/summary').then(r => r.json());
+    
+    const avgCostPerTransaction = summary.usageTotalCents / summary.x402Transactions;
+    console.log(`Average cost per transaction: $${avgCostPerTransaction / 100}`);
+    ```
+  </Accordion>
+  
+  <Accordion title="Set Up Balance Alerts">
+    Monitor your balance programmatically and alert when low:
+    
+    ```javascript
+    async function checkBalance() {
+      const { balanceCents } = await fetch('/v1/billing/summary').then(r => r.json());
+      
+      if (balanceCents < 1000) {  // Less than $10
+        console.warn('⚠️ Low balance alert: $' + (balanceCents / 100));
+        // Send notification or auto-top-up
+      }
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Top-Up Not Reflecting">
+    If your balance doesn't update after topping up:
+    
+    1. Check the response for a `paymentIntentId`
+    2. Verify the `balanceCents` in the response
+    3. Fetch the billing summary to confirm
+    4. Check payment intents to see if the transaction was recorded
+  </Accordion>
+  
+  <Accordion title="Balance Calculation Mismatch">
+    If your balance seems incorrect:
+    
+    The balance is calculated from the credit ledger:
+    ```typescript
+    // From api/src/services/credits.service.ts
+    const balance = SUM(credits) - SUM(debits)
+    ```
+    
+    Verify by checking your payment history and usage events.
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Make Paid Requests" icon="dollar-sign" href="/guides/making-paid-requests">
+    Learn how to use x402 payment endpoints
+  </Card>
+  
+  <Card title="API Reference" icon="code" href="/api/billing">
+    View complete billing API documentation
+  </Card>
+</CardGroup>

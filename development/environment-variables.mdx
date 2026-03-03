@@ -1,0 +1,405 @@
+---
+title: Environment Variables
+description: Complete reference for all ActumX environment variables
+---
+
+## Overview
+
+ActumX uses environment variables for configuration. The API and Dashboard have separate environment files.
+
+## API Environment Variables
+
+Environment variables for the API are stored in `api/.env`.
+
+### Server Configuration
+
+<ParamField path="PORT" type="string" default="3001">
+  The port number the API server listens on.
+  
+  ```bash
+  PORT=3001
+  ```
+</ParamField>
+
+<ParamField path="NODE_ENV" type="string" default="development">
+  The Node.js environment. Set to `production` in production deployments.
+  
+  ```bash
+  NODE_ENV=production
+  ```
+</ParamField>
+
+### Database Configuration
+
+<ParamField path="DATABASE_URL" type="string" required>
+  PostgreSQL connection string. Must include username, password, host, port, and database name.
+  
+  **Development:**
+  ```bash
+  DATABASE_URL=postgres://postgres:postgres@localhost:5432/x402
+  ```
+  
+  **Production:**
+  ```bash
+  DATABASE_URL=postgresql://user:password@host:5432/database?sslmode=require
+  ```
+</ParamField>
+
+### Authentication Configuration
+
+<ParamField path="BETTER_AUTH_URL" type="string" required>
+  The base URL where the API is accessible. Used by Better Auth for generating callback URLs and verification links.
+  
+  **Development:**
+  ```bash
+  BETTER_AUTH_URL=http://localhost:3001
+  ```
+  
+  **Production:**
+  ```bash
+  BETTER_AUTH_URL=https://api.yourdomain.com
+  ```
+</ParamField>
+
+<ParamField path="BETTER_AUTH_SECRET" type="string" required>
+  Secret key for signing authentication tokens. **Must be at least 32 characters long.**
+  
+  **Development:**
+  ```bash
+  BETTER_AUTH_SECRET=dev-only-better-auth-secret-change-me-32-plus-characters
+  ```
+  
+  **Production:**
+  Generate a secure random string:
+  ```bash
+  openssl rand -base64 32
+  ```
+  
+  <Warning>
+  Never commit this secret to version control or share it publicly. Use different secrets for each environment.
+  </Warning>
+</ParamField>
+
+<ParamField path="DASHBOARD_ORIGIN" type="string" required>
+  The URL of the Dashboard application. Used for CORS configuration to allow cross-origin requests.
+  
+  **Development:**
+  ```bash
+  DASHBOARD_ORIGIN=http://localhost:3000
+  ```
+  
+  **Production:**
+  ```bash
+  DASHBOARD_ORIGIN=https://yourdomain.com
+  ```
+</ParamField>
+
+### Solana Configuration
+
+<ParamField path="SOLANA_RPC_URL" type="string" required>
+  The Solana RPC endpoint URL for blockchain interactions.
+  
+  **Development (Devnet):**
+  ```bash
+  SOLANA_RPC_URL=https://api.devnet.solana.com
+  ```
+  
+  **Production (Mainnet):**
+  ```bash
+  SOLANA_RPC_URL=https://api.mainnet-beta.solana.com
+  ```
+  
+  **Custom RPC:**
+  You can use custom RPC providers for better performance:
+  - [QuickNode](https://www.quicknode.com/)
+  - [Alchemy](https://www.alchemy.com/solana)
+  - [Helius](https://www.helius.dev/)
+  
+  ```bash
+  SOLANA_RPC_URL=https://your-custom-rpc-endpoint.com
+  ```
+</ParamField>
+
+### API .env.example
+
+Complete example from `api/.env.example`:
+
+```bash
+PORT=3001
+DATABASE_URL=postgres://postgres:postgres@localhost:5432/x402
+BETTER_AUTH_URL=http://localhost:3001
+DASHBOARD_ORIGIN=http://localhost:3000
+BETTER_AUTH_SECRET=dev-only-better-auth-secret-change-me-32-plus-characters
+SOLANA_RPC_URL=https://api.devnet.solana.com
+```
+
+## Dashboard Environment Variables
+
+Environment variables for the Dashboard are stored in `dashboard/.env.local`.
+
+<Note>
+Next.js requires variables prefixed with `NEXT_PUBLIC_` to be accessible in the browser. Variables without this prefix are only available server-side.
+</Note>
+
+### API Configuration
+
+<ParamField path="NEXT_PUBLIC_API_BASE_URL" type="string" required>
+  The base URL of the ActumX API. Used by the Dashboard to make API requests.
+  
+  **Development:**
+  ```bash
+  NEXT_PUBLIC_API_BASE_URL=http://localhost:3001
+  ```
+  
+  **Production:**
+  ```bash
+  NEXT_PUBLIC_API_BASE_URL=https://api.yourdomain.com
+  ```
+  
+  <Warning>
+  This variable is exposed to the browser. Never include sensitive credentials in `NEXT_PUBLIC_` variables.
+  </Warning>
+</ParamField>
+
+### Dashboard .env.example
+
+Complete example from `dashboard/.env.example`:
+
+```bash
+NEXT_PUBLIC_API_BASE_URL=http://localhost:3001
+```
+
+## Environment Setup by Deployment Type
+
+### Local Development
+
+**API (.env):**
+```bash
+PORT=3001
+DATABASE_URL=postgres://postgres:postgres@localhost:5432/x402
+BETTER_AUTH_URL=http://localhost:3001
+DASHBOARD_ORIGIN=http://localhost:3000
+BETTER_AUTH_SECRET=dev-only-better-auth-secret-change-me-32-plus-characters
+SOLANA_RPC_URL=https://api.devnet.solana.com
+```
+
+**Dashboard (.env.local):**
+```bash
+NEXT_PUBLIC_API_BASE_URL=http://localhost:3001
+```
+
+### Staging Environment
+
+**API:**
+```bash
+PORT=3001
+NODE_ENV=production
+DATABASE_URL=postgresql://user:password@staging-db.example.com:5432/actumx?sslmode=require
+BETTER_AUTH_URL=https://api-staging.yourdomain.com
+DASHBOARD_ORIGIN=https://staging.yourdomain.com
+BETTER_AUTH_SECRET=<secure-staging-secret-32-plus-chars>
+SOLANA_RPC_URL=https://api.devnet.solana.com
+```
+
+**Dashboard:**
+```bash
+NEXT_PUBLIC_API_BASE_URL=https://api-staging.yourdomain.com
+```
+
+### Production Environment
+
+**API:**
+```bash
+PORT=3001
+NODE_ENV=production
+DATABASE_URL=postgresql://user:password@prod-db.example.com:5432/actumx?sslmode=require
+BETTER_AUTH_URL=https://api.yourdomain.com
+DASHBOARD_ORIGIN=https://yourdomain.com
+BETTER_AUTH_SECRET=<secure-production-secret-32-plus-chars>
+SOLANA_RPC_URL=https://api.mainnet-beta.solana.com
+```
+
+**Dashboard:**
+```bash
+NEXT_PUBLIC_API_BASE_URL=https://api.yourdomain.com
+```
+
+## Docker Environment Variables
+
+When using Docker, pass environment variables via:
+
+### Docker Run
+
+```bash
+docker run -d \
+  -e PORT=3001 \
+  -e DATABASE_URL="postgresql://..." \
+  -e BETTER_AUTH_SECRET="your-secret" \
+  actumx-api
+```
+
+### Docker Compose
+
+```yaml
+services:
+  api:
+    build: ./api
+    environment:
+      PORT: 3001
+      DATABASE_URL: postgresql://postgres:password@postgres:5432/x402
+      BETTER_AUTH_URL: https://api.yourdomain.com
+      DASHBOARD_ORIGIN: https://yourdomain.com
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
+      SOLANA_RPC_URL: https://api.mainnet-beta.solana.com
+```
+
+### Environment File
+
+Create a `.env` file and use with Docker Compose:
+
+```yaml
+services:
+  api:
+    build: ./api
+    env_file:
+      - ./api/.env
+```
+
+## Security Best Practices
+
+### Never Commit Secrets
+
+Add environment files to `.gitignore`:
+
+```gitignore
+.env
+.env.local
+.env.production
+.env.*.local
+```
+
+### Use Different Secrets Per Environment
+
+Generate unique secrets for development, staging, and production:
+
+```bash
+openssl rand -base64 32
+```
+
+### Rotate Secrets Regularly
+
+Change `BETTER_AUTH_SECRET` periodically and redeploy:
+
+1. Generate new secret
+2. Update environment variable
+3. Redeploy API
+4. Users will need to re-authenticate
+
+### Use Secret Management
+
+For production, consider using:
+
+- **AWS Secrets Manager**
+- **HashiCorp Vault**
+- **Doppler**
+- **1Password Secrets Automation**
+
+### Validate Required Variables
+
+The API uses Zod for environment validation (see `api/src/config/env.ts`). Missing or invalid variables will cause startup failures with clear error messages.
+
+## Troubleshooting
+
+### Variables Not Loading
+
+**API:**
+1. Verify file is named `.env` (not `.env.txt`)
+2. Ensure it's in the `api/` directory
+3. Restart the server after changes
+
+**Dashboard:**
+1. Verify file is named `.env.local`
+2. Ensure it's in the `dashboard/` directory
+3. Restart Next.js dev server
+4. Rebuild for production: `pnpm build`
+
+### Connection Refused
+
+If services can't connect:
+
+1. Check URLs match actual service locations
+2. Verify ports aren't blocked by firewalls
+3. Use correct protocol (http vs https)
+4. Ensure services are running
+
+### CORS Errors
+
+If Dashboard can't reach API:
+
+1. Verify `DASHBOARD_ORIGIN` in API matches Dashboard URL exactly
+2. Include protocol and port (if non-standard)
+3. Don't include trailing slash
+
+### Authentication Failures
+
+If auth doesn't work:
+
+1. Verify `BETTER_AUTH_SECRET` is at least 32 characters
+2. Ensure `BETTER_AUTH_URL` matches where API is accessible
+3. Check `DASHBOARD_ORIGIN` allows your Dashboard domain
+4. Confirm same secret is used across all API instances
+
+### Database Connection Errors
+
+If can't connect to database:
+
+1. Verify `DATABASE_URL` format:
+   ```
+   postgresql://username:password@host:port/database
+   ```
+2. Test connection manually:
+   ```bash
+   psql "$DATABASE_URL"
+   ```
+3. Check firewall rules allow connection
+4. For SSL, add `?sslmode=require` to URL
+
+### Solana RPC Issues
+
+If Solana integration fails:
+
+1. Verify `SOLANA_RPC_URL` is accessible:
+   ```bash
+   curl -X POST -H "Content-Type: application/json" \
+     -d '{"jsonrpc":"2.0","id":1,"method":"getHealth"}' \
+     $SOLANA_RPC_URL
+   ```
+2. Try alternative RPC endpoint
+3. Check for rate limiting
+4. Consider using a paid RPC provider
+
+## Reference
+
+### Required vs Optional Variables
+
+**API Required:**
+- `DATABASE_URL`
+- `BETTER_AUTH_URL`
+- `BETTER_AUTH_SECRET`
+- `DASHBOARD_ORIGIN`
+- `SOLANA_RPC_URL`
+
+**API Optional:**
+- `PORT` (defaults to 3001)
+- `NODE_ENV` (defaults to development)
+
+**Dashboard Required:**
+- `NEXT_PUBLIC_API_BASE_URL`
+
+### Default Values
+
+| Variable | Default | Override |
+|----------|---------|----------|
+| `PORT` | `3001` | Yes |
+| `NODE_ENV` | `development` | Yes |
+| All others | None | Required |

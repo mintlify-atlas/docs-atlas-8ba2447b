@@ -1,0 +1,505 @@
+---
+title: Deployment
+description: Deploy ActumX API and Dashboard to production
+---
+
+## Overview
+
+ActumX consists of two deployable components:
+
+1. **API** - Backend service (Elysia + Bun)
+2. **Dashboard** - Frontend application (Next.js)
+
+Both can be deployed using Docker or directly on a server.
+
+## API Deployment
+
+### Docker Deployment
+
+The API includes a production-ready Dockerfile.
+
+#### Build Docker Image
+
+From the `api/` directory:
+
+```bash
+docker build -t actumx-api .
+```
+
+#### Run Container
+
+```bash
+docker run -d \
+  --name actumx-api \
+  -p 3001:3001 \
+  -e DATABASE_URL="your-postgres-connection-string" \
+  -e BETTER_AUTH_SECRET="your-secret-min-32-chars" \
+  -e BETTER_AUTH_URL="https://api.yourdomain.com" \
+  -e DASHBOARD_ORIGIN="https://yourdomain.com" \
+  -e SOLANA_RPC_URL="https://api.mainnet-beta.solana.com" \
+  actumx-api
+```
+
+#### Dockerfile Breakdown
+
+The API Dockerfile (`api/Dockerfile`):
+
+```dockerfile
+FROM oven/bun:1 AS base
+WORKDIR /app
+
+# Install only runtime dependencies first for better layer caching.
+COPY package.json bun.lock ./
+RUN bun install --frozen-lockfile --production
+
+# Copy application source.
+COPY src ./src
+COPY drizzle ./drizzle
+COPY drizzle.config.ts tsconfig.json ./
+
+ENV NODE_ENV=production
+ENV PORT=3001
+
+EXPOSE 3001
+
+CMD ["bun", "run", "src/index.ts"]
+```
+
+**Key Features:**
+
+- Uses official Bun Docker image (`oven/bun:1`)
+- Production dependencies only (`--production` flag)
+- Layer caching optimization (dependencies installed before source copy)
+- Includes migration files in `drizzle/` directory
+- Exposes port 3001 by default
+
+### Production Build Process
+
+#### 1. Install Dependencies
+
+```bash
+cd api
+bun install --frozen-lockfile --production
+```
+
+The `--frozen-lockfile` flag ensures consistent dependencies from `bun.lock`.
+
+#### 2. Run Migrations
+
+Before starting the API, apply database migrations:
+
+```bash
+bun run db:migrate
+```
+
+Or manually using Drizzle Kit:
+
+```bash
+drizzle-kit migrate --config=drizzle.config.ts
+```
+
+#### 3. Type Check
+
+Verify TypeScript types before deployment:
+
+```bash
+bun run check
+```
+
+#### 4. Start Production Server
+
+```bash
+bun run start
+```
+
+This runs `bun run src/index.ts` without watch mode.
+
+### Direct Server Deployment
+
+To deploy directly on a server:
+
+1. **Install Bun:**
+   ```bash
+   curl -fsSL https://bun.sh/install | bash
+   ```
+
+2. **Clone and setup:**
+   ```bash
+   git clone <your-repo>
+   cd api
+   bun install --production
+   ```
+
+3. **Configure environment:**
+   ```bash
+   cp .env.example .env
+   # Edit .env with production values
+   ```
+
+4. **Run migrations:**
+   ```bash
+   bun run db:migrate
+   ```
+
+5. **Start with process manager (PM2):**
+   ```bash
+   npm install -g pm2
+   pm2 start "bun run src/index.ts" --name actumx-api
+   pm2 save
+   pm2 startup
+   ```
+
+## Dashboard Deployment
+
+### Next.js Build
+
+From the `dashboard/` directory:
+
+```bash
+pnpm install
+pnpm build
+```
+
+This creates an optimized production build in `.next/`.
+
+### Deployment Options
+
+#### Option 1: Vercel (Recommended)
+
+Vercel offers the best Next.js deployment experience:
+
+1. **Install Vercel CLI:**
+   ```bash
+   npm i -g vercel
+   ```
+
+2. **Deploy:**
+   ```bash
+   cd dashboard
+   vercel
+   ```
+
+3. **Set environment variables in Vercel dashboard:**
+   - `NEXT_PUBLIC_API_BASE_URL=https://api.yourdomain.com`
+
+#### Option 2: Docker
+
+Create a `Dockerfile` in `dashboard/`:
+
+```dockerfile
+FROM node:20-alpine AS base
+
+# Install dependencies
+FROM base AS deps
+RUN corepack enable pnpm
+WORKDIR /app
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
+
+# Build application
+FROM base AS builder
+RUN corepack enable pnpm
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+RUN pnpm build
+
+# Production image
+FROM base AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 nextjs
+
+COPY --from=builder /app/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+
+USER nextjs
+EXPOSE 3000
+ENV PORT=3000
+
+CMD ["node", "server.js"]
+```
+
+Update `next.config.js` to enable standalone output:
+
+```javascript
+module.exports = {
+  output: 'standalone',
+}
+```
+
+Build and run:
+
+```bash
+docker build -t actumx-dashboard .
+docker run -d -p 3000:3000 \
+  -e NEXT_PUBLIC_API_BASE_URL="https://api.yourdomain.com" \
+  actumx-dashboard
+```
+
+#### Option 3: Direct Server Deployment
+
+1. **Build the application:**
+   ```bash
+   pnpm build
+   ```
+
+2. **Start with PM2:**
+   ```bash
+   npm install -g pm2
+   pm2 start "pnpm start" --name actumx-dashboard
+   pm2 save
+   pm2 startup
+   ```
+
+#### Option 4: Static Export
+
+If you don't need server-side features, export as static HTML:
+
+Update `next.config.js`:
+
+```javascript
+module.exports = {
+  output: 'export',
+}
+```
+
+Build:
+
+```bash
+pnpm build
+```
+
+This creates static files in `out/` that can be served by any static host (Netlify, Cloudflare Pages, AWS S3, etc.).
+
+## Environment Configuration
+
+### Production Environment Variables
+
+#### API Environment Variables
+
+Required for production:
+
+```bash
+# Server
+PORT=3001
+NODE_ENV=production
+
+# Database
+DATABASE_URL=postgresql://user:password@host:5432/database
+
+# Authentication
+BETTER_AUTH_URL=https://api.yourdomain.com
+BETTER_AUTH_SECRET=<random-32-plus-character-string>
+DASHBOARD_ORIGIN=https://yourdomain.com
+
+# Solana
+SOLANA_RPC_URL=https://api.mainnet-beta.solana.com
+```
+
+**Security Notes:**
+
+- Generate a secure `BETTER_AUTH_SECRET` (minimum 32 characters):
+  ```bash
+  openssl rand -base64 32
+  ```
+- Use environment-specific URLs (not localhost)
+- Use mainnet Solana RPC for production
+
+#### Dashboard Environment Variables
+
+```bash
+NEXT_PUBLIC_API_BASE_URL=https://api.yourdomain.com
+```
+
+**Important:** The `NEXT_PUBLIC_` prefix makes this variable accessible in the browser.
+
+### Environment Variable Management
+
+#### Docker Compose
+
+Create `docker-compose.yml` for easier deployment:
+
+```yaml
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:latest
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: <secure-password>
+      POSTGRES_DB: x402
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  api:
+    build: ./api
+    ports:
+      - "3001:3001"
+    environment:
+      DATABASE_URL: postgresql://postgres:<secure-password>@postgres:5432/x402
+      BETTER_AUTH_URL: https://api.yourdomain.com
+      BETTER_AUTH_SECRET: <secure-secret>
+      DASHBOARD_ORIGIN: https://yourdomain.com
+      SOLANA_RPC_URL: https://api.mainnet-beta.solana.com
+    depends_on:
+      - postgres
+
+  dashboard:
+    build: ./dashboard
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: https://api.yourdomain.com
+
+volumes:
+  postgres_data:
+```
+
+Deploy:
+
+```bash
+docker-compose up -d
+```
+
+## Database Migrations in Production
+
+### Manual Migration
+
+Run migrations before deploying new API versions:
+
+```bash
+cd api
+bun run db:migrate
+```
+
+### Automated Migration
+
+Option 1: Run migrations in Docker entrypoint:
+
+```dockerfile
+CMD ["sh", "-c", "bun run db:migrate && bun run src/index.ts"]
+```
+
+Option 2: Run as a separate job in CI/CD before deployment.
+
+<Warning>
+Always backup your database before running migrations in production.
+</Warning>
+
+## Health Checks
+
+### API Health Check
+
+Add a health endpoint to your API (if not already present):
+
+```typescript
+app.get('/health', () => ({ status: 'ok' }))
+```
+
+Use in Docker:
+
+```dockerfile
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost:3001/health || exit 1
+```
+
+## Monitoring & Logging
+
+### Logs
+
+View Docker container logs:
+
+```bash
+# API logs
+docker logs -f actumx-api
+
+# Dashboard logs
+docker logs -f actumx-dashboard
+```
+
+### Performance Monitoring
+
+Consider integrating:
+
+- **Sentry** - Error tracking
+- **DataDog** - APM and logging
+- **New Relic** - Performance monitoring
+- **Prometheus + Grafana** - Metrics and dashboards
+
+## SSL/TLS Configuration
+
+Use a reverse proxy like Nginx or Caddy for SSL:
+
+### Caddy Example
+
+```
+api.yourdomain.com {
+    reverse_proxy localhost:3001
+}
+
+yourdomain.com {
+    reverse_proxy localhost:3000
+}
+```
+
+Caddy automatically provisions SSL certificates from Let's Encrypt.
+
+## Scaling
+
+### Horizontal Scaling
+
+- Deploy multiple API instances behind a load balancer
+- Use a managed PostgreSQL service (AWS RDS, Digital Ocean, etc.)
+- Deploy Dashboard to CDN (Vercel, Cloudflare, etc.)
+
+### Database Scaling
+
+- Use connection pooling (PgBouncer)
+- Enable read replicas for read-heavy workloads
+- Consider managed database services for automatic backups and scaling
+
+## Security Checklist
+
+- [ ] Use HTTPS for all services
+- [ ] Set secure `BETTER_AUTH_SECRET` (32+ characters)
+- [ ] Use production database credentials
+- [ ] Enable CORS only for trusted origins
+- [ ] Keep dependencies updated
+- [ ] Use environment variables (never commit secrets)
+- [ ] Enable database backups
+- [ ] Set up monitoring and alerts
+- [ ] Use mainnet RPC URLs in production
+- [ ] Restrict database access to API only
+
+## Troubleshooting
+
+### Build Failures
+
+```bash
+# Clear Docker cache and rebuild
+docker build --no-cache -t actumx-api .
+```
+
+### Migration Errors
+
+If migrations fail in production:
+
+1. Check database connectivity
+2. Verify `DATABASE_URL` format
+3. Ensure database user has migration permissions
+4. Check migration logs for specific errors
+
+### Connection Issues
+
+If services can't communicate:
+
+1. Verify network configuration (Docker networks, firewalls)
+2. Check environment variable URLs
+3. Ensure services are running: `docker ps`

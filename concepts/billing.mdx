@@ -1,0 +1,595 @@
+---
+title: "Billing System"
+description: "Understand ActumX's credit-based billing, payment intents, and usage tracking"
+---
+
+## Overview
+
+ActumX uses a **credit-based prepaid billing system**. You add credits to your account, then credits are automatically deducted as you use paid API endpoints.
+
+### Key Concepts
+
+- **Credits**: Prepaid balance stored in cents (USD)
+- **Payment Intents**: Top-up transactions that add credits
+- **Credit Ledger**: Double-entry accounting log of all credits/debits
+- **Usage Events**: Records of API usage and costs
+- **x402 Transactions**: Payment records for paid requests
+
+<Info>
+All monetary values in ActumX are stored in cents (USD) to avoid floating-point precision issues.
+</Info>
+
+## Credit-Based Model
+
+### How It Works
+
+1. **Top Up**: Add credits to your account via payment intent
+2. **Use API**: Make requests to paid endpoints (e.g., x402 protected routes)
+3. **Auto Deduct**: Credits are automatically deducted when you settle x402 payments
+4. **Track Usage**: View your balance, top-ups, and usage in real-time
+
+### Balance Calculation
+
+Your balance is computed from the credit ledger:
+
+```typescript
+// Balance = Sum(credits) - Sum(debits)
+const balanceCents = 
+  totalTopUps - totalUsage;
+```
+
+**Source Reference**: `/home/daytona/workspace/source/api/src/services/credits.service.ts` (inferred from usage in `billing/service.ts:88`)
+
+## Payment Intents
+
+Payment intents represent top-up transactions.
+
+### Payment Intent Structure
+
+```typescript
+interface PaymentIntent {
+  id: string;                // Unique intent ID (prefixed with "pi_")
+  userId: string;            // Your user ID
+  amountCents: number;       // Top-up amount in cents
+  status: string;            // "pending" | "settled" | "failed"
+  providerReference: string | null; // External payment provider ref
+  createdAt: string;         // ISO 8601 timestamp
+  updatedAt: string;         // ISO 8601 timestamp
+}
+```
+
+### Database Schema
+
+```sql
+CREATE TABLE payment_intents (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  amount_cents INTEGER NOT NULL,
+  status TEXT NOT NULL,
+  provider_reference TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX idx_payment_intents_user_id ON payment_intents(user_id);
+```
+
+**Source Reference**: `/home/daytona/workspace/source/api/src/db/schema.ts:18-28`
+
+### Creating a Payment Intent
+
+Top up your account:
+
+```bash
+curl -X POST https://api.actumx.com/api/v1/billing/top-up \
+  -H "Cookie: your_session_cookie" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "amountCents": 1000
+  }'
+```
+
+**Request Constraints:**
+
+- Minimum: 100 cents ($1.00 USD)
+- Maximum: 100,000 cents ($1,000.00 USD)
+
+**Response:**
+
+```json
+{
+  "paymentIntentId": "pi_abc123",
+  "addedCents": 1000,
+  "balanceCents": 1500
+}
+```
+
+<Note>
+Currently, ActumX uses a dummy payment provider for development. In production, this would integrate with Stripe, PayPal, or similar.
+</Note>
+
+### Payment Intent Flow
+
+```typescript
+// Create payment intent (source: service.ts:68-76)
+await db.insert(paymentIntents).values({
+  id: newId("pi"),
+  userId: auth.user.id,
+  amountCents: payload.amountCents,
+  status: "settled",  // Auto-settled in dev mode
+  providerReference: `dummy_${newId("provider")}`,
+  createdAt: timestamp,
+  updatedAt: timestamp,
+});
+
+// Add credit to ledger (source: service.ts:78-86)
+await db.insert(creditLedger).values({
+  id: newId("ledger"),
+  userId: auth.user.id,
+  direction: "credit",
+  amountCents: payload.amountCents,
+  source: "top_up",
+  referenceId: intentId,
+  createdAt: timestamp,
+});
+```
+
+### Listing Payment Intents
+
+View your top-up history:
+
+```bash
+curl https://api.actumx.com/api/v1/billing/payment-intents \
+  -H "Cookie: your_session_cookie"
+```
+
+**Response:**
+
+```json
+{
+  "intents": [
+    {
+      "id": "pi_abc123",
+      "userId": "user_xyz",
+      "amountCents": 1000,
+      "status": "settled",
+      "providerReference": "dummy_provider_abc",
+      "createdAt": "2026-03-03T20:00:00Z",
+      "updatedAt": "2026-03-03T20:00:01Z"
+    }
+  ]
+}
+```
+
+Intents are sorted by creation date (newest first), limited to 50 results.
+
+## Credit Ledger
+
+The credit ledger is a double-entry accounting log of all balance changes.
+
+### Ledger Entry Structure
+
+```typescript
+interface LedgerEntry {
+  id: string;           // Unique ledger entry ID (prefixed with "ledger_")
+  userId: string;       // Your user ID
+  direction: "credit" | "debit";  // Credit (add) or debit (subtract)
+  amountCents: number;  // Amount changed in cents
+  source: string;       // "top_up" | "api_request"
+  referenceId: string | null;  // ID of related payment intent or x402 tx
+  createdAt: string;    // ISO 8601 timestamp
+}
+```
+
+### Database Schema
+
+```sql
+CREATE TABLE credit_ledger (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  direction TEXT NOT NULL,
+  amount_cents INTEGER NOT NULL,
+  source TEXT NOT NULL,
+  reference_id TEXT,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX idx_credit_ledger_user_id ON credit_ledger(user_id);
+```
+
+**Source Reference**: `/home/daytona/workspace/source/api/src/db/schema.ts:30-40`
+
+### Ledger Entry Types
+
+#### Credit Entry (Top-Up)
+
+```typescript
+{
+  "id": "ledger_abc123",
+  "userId": "user_xyz",
+  "direction": "credit",
+  "amountCents": 1000,
+  "source": "top_up",
+  "referenceId": "pi_abc123",  // Payment intent ID
+  "createdAt": "2026-03-03T20:00:00Z"
+}
+```
+
+#### Debit Entry (API Usage)
+
+```typescript
+{
+  "id": "ledger_xyz789",
+  "userId": "user_xyz",
+  "direction": "debit",
+  "amountCents": 10,
+  "source": "api_request",
+  "referenceId": "x402tx_abc",  // x402 transaction ID
+  "createdAt": "2026-03-03T22:30:00Z"
+}
+```
+
+### Balance Calculation
+
+Your current balance is computed by summing all ledger entries:
+
+```typescript
+// Conceptual balance calculation
+const credits = await db
+  .select({ sum: sql`SUM(amount_cents)` })
+  .from(creditLedger)
+  .where(and(
+    eq(creditLedger.userId, userId),
+    eq(creditLedger.direction, "credit")
+  ));
+
+const debits = await db
+  .select({ sum: sql`SUM(amount_cents)` })
+  .from(creditLedger)
+  .where(and(
+    eq(creditLedger.userId, userId),
+    eq(creditLedger.direction, "debit")
+  ));
+
+const balanceCents = (credits.sum || 0) - (debits.sum || 0);
+```
+
+<Info>
+The ledger provides an immutable audit trail of all financial transactions.
+</Info>
+
+## Usage Events
+
+Usage events record each API request and its cost.
+
+### Usage Event Structure
+
+```typescript
+interface UsageEvent {
+  id: string;              // Unique usage ID (prefixed with "usage_")
+  userId: string;          // Your user ID
+  apiKeyId: string;        // API key used for request
+  endpoint: string;        // API endpoint path
+  method: string;          // HTTP method (GET, POST, etc.)
+  units: number;           // Number of units consumed (e.g., 1 request)
+  costCents: number;       // Cost in cents
+  x402TransactionId: string; // Related x402 transaction
+  createdAt: string;       // ISO 8601 timestamp
+}
+```
+
+### Database Schema
+
+```sql
+CREATE TABLE usage_events (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  api_key_id TEXT NOT NULL REFERENCES api_keys(id) ON DELETE CASCADE,
+  endpoint TEXT NOT NULL,
+  method TEXT NOT NULL,
+  units INTEGER NOT NULL,
+  cost_cents INTEGER NOT NULL,
+  x402_transaction_id TEXT NOT NULL REFERENCES x402_transactions(id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX idx_usage_events_user_id ON usage_events(user_id);
+```
+
+**Source Reference**: `/home/daytona/workspace/source/api/src/db/schema.ts:60-72`
+
+### Usage Tracking
+
+Usage events are created when x402 payments are consumed:
+
+```typescript
+// Track usage after payment consumption (source: x402/service.ts:412-422)
+await db.insert(usageEvents).values({
+  id: newId("usage"),
+  userId: apiKey.userId,
+  apiKeyId: apiKey.id,
+  endpoint: X402_PAID_ENDPOINT,
+  method: "GET",
+  units: 1,
+  costCents: transaction.amountCents,
+  x402TransactionId: transaction.id,
+  createdAt: timestamp,
+});
+```
+
+This enables:
+
+- Detailed usage analytics
+- Cost attribution per API key
+- Usage trends over time
+- Billing dispute resolution
+
+## Billing Summary
+
+Get an overview of your billing status:
+
+```bash
+curl https://api.actumx.com/api/v1/billing/summary \
+  -H "Cookie: your_session_cookie"
+```
+
+**Response:**
+
+```json
+{
+  "balanceCents": 1490,
+  "topUpTotalCents": 1500,
+  "usageTotalCents": 10,
+  "activeApiKeys": 2,
+  "x402Transactions": 1
+}
+```
+
+### Summary Calculations
+
+```typescript
+// Top-up total (source: service.ts:18-21)
+const [topUpTotal] = await db
+  .select({ totalCents: sql`COALESCE(SUM(${paymentIntents.amountCents}), 0)` })
+  .from(paymentIntents)
+  .where(and(
+    eq(paymentIntents.userId, auth.user.id),
+    eq(paymentIntents.status, "settled")
+  ));
+
+// Usage total (source: service.ts:23-26)
+const [usageTotal] = await db
+  .select({ totalCents: sql`COALESCE(SUM(${usageEvents.costCents}), 0)` })
+  .from(usageEvents)
+  .where(eq(usageEvents.userId, auth.user.id));
+
+// Active API keys (source: service.ts:28-31)
+const [activeKeyCount] = await db
+  .select({ count: sql`COUNT(*)` })
+  .from(apiKeys)
+  .where(and(
+    eq(apiKeys.userId, auth.user.id),
+    isNull(apiKeys.revokedAt)
+  ));
+
+// x402 transaction count (source: service.ts:33-36)
+const [transactionCount] = await db
+  .select({ count: sql`COUNT(*)` })
+  .from(x402Transactions)
+  .where(eq(x402Transactions.userId, auth.user.id));
+```
+
+## Pricing
+
+### Current Costs
+
+- **x402 Quote Request**: 10 cents ($0.10 USD)
+
+<Info>
+Pricing is configured in `/home/daytona/workspace/source/api/src/config/constants.ts` via `X402_PAID_REQUEST_COST_CENTS`.
+</Info>
+
+### Future Pricing Model
+
+ActumX may introduce tiered pricing:
+
+| Tier | Monthly Requests | Cost per Request |
+|------|------------------|------------------|
+| Free | 100 | $0.00 |
+| Starter | 1,000 | $0.08 |
+| Pro | 10,000 | $0.05 |
+| Enterprise | Unlimited | Custom |
+
+## Payment Flow Diagram
+
+```
+┌─────────────┐
+│  Top Up     │
+│  (User)     │
+└──────┬──────┘
+       │
+       ▼
+┌──────────────────┐      ┌──────────────────┐
+│ Payment Intent   │─────▶│  Credit Ledger   │
+│ (settled)        │      │  (credit entry)  │
+└──────────────────┘      └──────────────────┘
+                                   │
+                                   │
+                          ┌────────▼─────────┐
+                          │  Balance Update  │
+                          └────────┬─────────┘
+                                   │
+       ┌───────────────────────────┘
+       │
+       ▼
+┌──────────────────┐
+│  API Request     │
+│  (x402 flow)     │
+└──────┬───────────┘
+       │
+       ▼
+┌──────────────────┐      ┌──────────────────┐
+│ x402 Settle      │─────▶│  Credit Ledger   │
+│                  │      │  (debit entry)   │
+└──────┬───────────┘      └──────────────────┘
+       │                           │
+       │                           │
+       ▼                  ┌────────▼─────────┐
+┌──────────────────┐     │  Balance Update  │
+│ Usage Event      │     └──────────────────┘
+│ (recorded)       │
+└──────────────────┘
+```
+
+## Implementation Details
+
+### Service Layer
+
+The billing service handles all financial operations:
+
+**Key Functions:**
+
+- `summary(request)`: Get billing overview
+- `topUp(request, payload)`: Add credits to account
+- `paymentIntents(request)`: List top-up history
+
+**Source Reference**: `/home/daytona/workspace/source/api/src/modules/billing/service.ts`
+
+### Validation
+
+Top-up amounts are validated:
+
+```typescript
+// Model validation (source: model.ts:4-6)
+const topUpBody = t.Object({
+  amountCents: t.Number({ minimum: 100 }),
+});
+
+// Additional server-side check (source: service.ts:58-62)
+if (payload.amountCents < 100 || payload.amountCents > 100000) {
+  return {
+    statusCode: 400,
+    body: { error: "amount_must_be_between_100_and_100000_cents" },
+  };
+}
+```
+
+### Credits Service
+
+The `CreditsService` computes balances:
+
+```typescript
+// Compute current balance
+const balanceCents = await CreditsService.computeBalanceCents(userId);
+```
+
+**Source Reference**: `/home/daytona/workspace/source/api/src/services/credits.service.ts` (inferred)
+
+## Best Practices
+
+### 1. Monitor Your Balance
+
+Regularly check your balance to avoid service interruptions:
+
+```bash
+curl https://api.actumx.com/api/v1/billing/summary
+```
+
+### 2. Set Balance Alerts
+
+Implement client-side alerts when balance drops below a threshold:
+
+```javascript
+const { balanceCents } = await actumx.get('/billing/summary');
+
+if (balanceCents < 500) {  // Less than $5
+  console.warn('Low balance! Top up soon.');
+  sendEmailAlert();
+}
+```
+
+### 3. Track Usage by API Key
+
+Use different API keys for different services to track costs:
+
+```bash
+# Create separate keys
+curl -X POST /api/v1/api-keys -d '{"name": "Production Bot"}'
+curl -X POST /api/v1/api-keys -d '{"name": "Staging Tests"}'
+```
+
+Usage events will show which key incurred costs.
+
+### 4. Automate Top-Ups
+
+Set up automatic top-ups when balance is low:
+
+```javascript
+if (balanceCents < 500) {
+  await actumx.post('/billing/top-up', {
+    amountCents: 1000  // Add $10
+  });
+}
+```
+
+### 5. Review Usage Events
+
+Periodically audit usage events for unexpected costs:
+
+```sql
+-- Query usage events (conceptual)
+SELECT 
+  endpoint,
+  COUNT(*) as request_count,
+  SUM(cost_cents) as total_cost
+FROM usage_events
+WHERE user_id = 'your_user_id'
+GROUP BY endpoint;
+```
+
+## Error Handling
+
+Common billing errors:
+
+| Error | HTTP Status | Cause | Solution |
+|-------|-------------|-------|----------|
+| `unauthorized` | 401 | Missing auth | Provide session cookie |
+| `insufficient_balance` | 402 | Not enough credits | Top up account |
+| `amount_must_be_between_100_and_100000_cents` | 400 | Invalid top-up | Use $1-$1000 range |
+| `payment_not_settled` | 402 | Payment pending | Wait for settlement |
+
+### Example Error Response
+
+```json
+{
+  "error": "insufficient_balance",
+  "requiredCents": 10,
+  "balanceCents": 5,
+  "message": "Top up balance in dashboard before settling this x402 payment."
+}
+```
+
+## Security Considerations
+
+1. **Transaction Atomicity**: All ledger entries are created in database transactions
+2. **Idempotency**: Payment intents use unique IDs to prevent double-charging
+3. **User Isolation**: All queries filter by `userId` to prevent cross-user access
+4. **Audit Trail**: The ledger provides immutable financial history
+5. **Balance Validation**: Settlement checks balance before debiting
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Billing & Credits Guide" icon="wallet" href="/guides/billing-credits">
+    Step-by-step guide to managing your credits
+  </Card>
+  <Card title="Dashboard - Billing" icon="chart-line" href="/dashboard/billing">
+    View billing details in the web dashboard
+  </Card>
+  <Card title="API Reference" icon="code" href="/api/billing">
+    View detailed billing API endpoints
+  </Card>
+  <Card title="x402 Protocol" icon="handshake" href="/concepts/x402-protocol">
+    Learn how x402 payments deduct credits
+  </Card>
+</CardGroup>

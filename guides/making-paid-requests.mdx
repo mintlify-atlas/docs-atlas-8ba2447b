@@ -1,0 +1,501 @@
+---
+title: 'Making Paid Requests'
+description: 'Use x402 payment protocol to access paid API endpoints'
+icon: 'dollar-sign'
+---
+
+## What is x402?
+
+x402 is a protocol for HTTP payment-required responses that enables:
+
+- **Machine-readable payment challenges** using HTTP 402 status
+- **Automatic payment settlement** without custom billing logic
+- **Retry mechanisms** after successful payment
+- **Transparent pricing** embedded in API responses
+
+<Info>
+  ActumX implements a simplified x402 flow. The protocol is inspired by HTTP 402 Payment Required and designed for AI agent interactions.
+</Info>
+
+## The x402 Flow
+
+<Steps>
+  <Step title="Make Initial Request">
+    Request a paid endpoint without payment proof:
+    
+    ```bash
+    curl -X GET "http://localhost:3001/v1/protected/quote?topic=ai" \
+      -H "Authorization: Bearer xk_live_..."
+    ```
+    
+    **Response (402 Payment Required):**
+    ```json
+    {
+      "error": "payment_required",
+      "message": "This endpoint requires payment. Settle first and retry with payment proof.",
+      "x402": {
+        "version": "0.1-draft",
+        "paymentId": "x402tx_abc123def456",
+        "amountCents": 25,
+        "amountUsd": "0.25",
+        "currency": "USD",
+        "endpoint": "/v1/protected/quote",
+        "settlementEndpoint": "/v1/x402/settle",
+        "facilitator": "internal-simulator",
+        "expiresAt": "2026-03-03T23:40:00.000Z"
+      }
+    }
+    ```
+    
+    <Note>
+      The system automatically creates a pending transaction in the database with a unique `paymentId`.
+    </Note>
+  </Step>
+
+  <Step title="Settle the Payment">
+    Use the `paymentId` to settle the payment challenge:
+    
+    <CodeGroup>
+    ```bash cURL
+    curl -X POST http://localhost:3001/v1/x402/settle \
+      -H "Authorization: Bearer xk_live_..." \
+      -H "Content-Type: application/json" \
+      -d '{
+        "paymentId": "x402tx_abc123def456"
+      }'
+    ```
+    
+    ```javascript JavaScript
+    const settleResponse = await fetch('http://localhost:3001/v1/x402/settle', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        paymentId: 'x402tx_abc123def456'
+      })
+    });
+    
+    const settlement = await settleResponse.json();
+    console.log(settlement);
+    ```
+    
+    ```python Python
+    import requests
+    
+    response = requests.post(
+        'http://localhost:3001/v1/x402/settle',
+        headers={'Authorization': f'Bearer {api_key}'},
+        json={'paymentId': 'x402tx_abc123def456'}
+    )
+    
+    settlement = response.json()
+    print(settlement)
+    ```
+    </CodeGroup>
+    
+    **Response (200 Success):**
+    ```json
+    {
+      "receiptId": "receipt_xyz789ghi012",
+      "paymentId": "x402tx_abc123def456",
+      "status": "settled",
+      "amountCents": 25,
+      "settledAt": "2026-03-03T23:35:00.000Z"
+    }
+    ```
+    
+    <Check>
+      The settlement deducts 25 cents from your account balance and generates a `receiptId` as proof of payment.
+    </Check>
+  </Step>
+
+  <Step title="Retry with Payment Proof">
+    Make the original request again, this time including payment proof headers:
+    
+    <CodeGroup>
+    ```bash cURL
+    curl -X GET "http://localhost:3001/v1/protected/quote?topic=ai" \
+      -H "Authorization: Bearer xk_live_..." \
+      -H "X-Payment-Id: x402tx_abc123def456" \
+      -H "X-Payment-Proof: receipt_xyz789ghi012"
+    ```
+    
+    ```javascript JavaScript
+    const response = await fetch(
+      'http://localhost:3001/v1/protected/quote?topic=ai',
+      {
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'X-Payment-Id': 'x402tx_abc123def456',
+          'X-Payment-Proof': 'receipt_xyz789ghi012'
+        }
+      }
+    );
+    
+    const data = await response.json();
+    console.log(data);
+    ```
+    
+    ```python Python
+    response = requests.get(
+        'http://localhost:3001/v1/protected/quote',
+        params={'topic': 'ai'},
+        headers={
+            'Authorization': f'Bearer {api_key}',
+            'X-Payment-Id': 'x402tx_abc123def456',
+            'X-Payment-Proof': 'receipt_xyz789ghi012'
+        }
+    )
+    
+    data = response.json()
+    print(data)
+    ```
+    </CodeGroup>
+    
+    **Response (200 Success):**
+    ```json
+    {
+      "data": {
+        "topic": "ai",
+        "insight": "x402 allows machine-readable payment requirements using HTTP 402 so clients can settle and retry without custom per-API billing logic.",
+        "generatedAt": "2026-03-03T23:36:00.000Z"
+      },
+      "payment": {
+        "paymentId": "x402tx_abc123def456",
+        "receiptId": "receipt_xyz789ghi012",
+        "amountCents": 25,
+        "status": "completed"
+      }
+    }
+    ```
+    
+    <Check>
+      Success! The transaction is marked as `completed` and a usage event is recorded.
+    </Check>
+  </Step>
+</Steps>
+
+## Complete Example: Automated Flow
+
+Here's a complete example that handles the entire x402 flow automatically:
+
+<CodeGroup>
+```javascript JavaScript
+async function makeX402Request(endpoint, apiKey, queryParams = {}) {
+  const url = new URL(endpoint);
+  Object.entries(queryParams).forEach(([key, value]) => {
+    url.searchParams.append(key, value);
+  });
+  
+  // Step 1: Initial request
+  let response = await fetch(url, {
+    headers: {
+      'Authorization': `Bearer ${apiKey}`
+    }
+  });
+  
+  let data = await response.json();
+  
+  // Step 2: Handle payment required
+  if (response.status === 402 && data.x402) {
+    console.log(`💰 Payment required: $${data.x402.amountUsd}`);
+    
+    // Settle the payment
+    const settleResponse = await fetch('http://localhost:3001/v1/x402/settle', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        paymentId: data.x402.paymentId
+      })
+    });
+    
+    const settlement = await settleResponse.json();
+    
+    if (settleResponse.status !== 200) {
+      throw new Error(`Settlement failed: ${JSON.stringify(settlement)}`);
+    }
+    
+    console.log(`✅ Payment settled: ${settlement.receiptId}`);
+    
+    // Step 3: Retry with proof
+    response = await fetch(url, {
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'X-Payment-Id': settlement.paymentId,
+        'X-Payment-Proof': settlement.receiptId
+      }
+    });
+    
+    data = await response.json();
+  }
+  
+  return data;
+}
+
+// Usage
+const result = await makeX402Request(
+  'http://localhost:3001/v1/protected/quote',
+  process.env.ACTUMX_API_KEY,
+  { topic: 'ai' }
+);
+
+console.log(result);
+```
+
+```python Python
+import os
+import requests
+from typing import Dict, Optional
+
+def make_x402_request(
+    endpoint: str,
+    api_key: str,
+    query_params: Optional[Dict] = None
+) -> Dict:
+    """Make an x402 request with automatic payment handling."""
+    
+    headers = {'Authorization': f'Bearer {api_key}'}
+    
+    # Step 1: Initial request
+    response = requests.get(endpoint, headers=headers, params=query_params)
+    data = response.json()
+    
+    # Step 2: Handle payment required
+    if response.status_code == 402 and 'x402' in data:
+        print(f"💰 Payment required: ${data['x402']['amountUsd']}")
+        
+        # Settle the payment
+        settle_response = requests.post(
+            'http://localhost:3001/v1/x402/settle',
+            headers=headers,
+            json={'paymentId': data['x402']['paymentId']}
+        )
+        
+        settlement = settle_response.json()
+        
+        if settle_response.status_code != 200:
+            raise Exception(f"Settlement failed: {settlement}")
+        
+        print(f"✅ Payment settled: {settlement['receiptId']}")
+        
+        # Step 3: Retry with proof
+        headers['X-Payment-Id'] = settlement['paymentId']
+        headers['X-Payment-Proof'] = settlement['receiptId']
+        
+        response = requests.get(endpoint, headers=headers, params=query_params)
+        data = response.json()
+    
+    return data
+
+# Usage
+result = make_x402_request(
+    'http://localhost:3001/v1/protected/quote',
+    os.getenv('ACTUMX_API_KEY'),
+    {'topic': 'ai'}
+)
+
+print(result)
+```
+</CodeGroup>
+
+## Payment States
+
+An x402 transaction goes through these states:
+
+<Steps>
+  <Step title="Pending">
+    Initial state when payment challenge is issued
+    
+    - Transaction created in database
+    - `paymentId` generated
+    - User has not settled yet
+  </Step>
+  
+  <Step title="Settled">
+    Payment has been deducted from user's balance
+    
+    - Credits deducted from account
+    - `receiptId` generated
+    - Ready for endpoint access
+  </Step>
+  
+  <Step title="Completed">
+    User successfully accessed the endpoint with proof
+    
+    - Usage event recorded
+    - API key's `lastUsedAt` updated
+    - Transaction finalized
+  </Step>
+</Steps>
+
+## Implementation Details
+
+### Creating Payment Challenge
+
+From `api/src/modules/x402/service.ts:352-375`:
+
+```typescript
+if (!paymentId || !paymentProof) {
+  const txId = newId("x402tx");
+  const timestamp = TimeService.nowIso();
+
+  await db.insert(x402Transactions).values({
+    id: txId,
+    userId: apiKey.userId,
+    apiKeyId: apiKey.id,
+    endpoint: X402_PAID_ENDPOINT,
+    method: "GET",
+    amountCents: X402_PAID_REQUEST_COST_CENTS,
+    status: "pending",
+    // ...
+  });
+
+  return {
+    statusCode: 402,
+    body: X402Service.buildPaymentRequiredResponse(txId),
+  };
+}
+```
+
+### Settling Payment
+
+From `api/src/modules/x402/service.ts:307-324`:
+
+```typescript
+await db.insert(creditLedger).values({
+  id: newId("ledger"),
+  userId: apiKey.userId,
+  direction: "debit",
+  amountCents: transaction.amountCents,
+  source: "api_request",
+  referenceId: transaction.id,
+  createdAt: timestamp,
+});
+
+await db
+  .update(x402Transactions)
+  .set({
+    status: "settled",
+    receiptId,
+    updatedAt: timestamp,
+  })
+  .where(eq(x402Transactions.id, transaction.id));
+```
+
+## Error Handling
+
+<AccordionGroup>
+  <Accordion title="Insufficient Balance (402)">
+    **Error Response:**
+    ```json
+    {
+      "error": "insufficient_balance",
+      "requiredCents": 25,
+      "balanceCents": 10,
+      "message": "Top up balance in dashboard before settling this x402 payment."
+    }
+    ```
+    
+    **Solution:** Top up your account balance before settling.
+  </Accordion>
+  
+  <Accordion title="Invalid Payment Proof (402)">
+    **Error Response:**
+    ```json
+    {
+      "error": "invalid_payment_proof"
+    }
+    ```
+    
+    **Causes:**
+    - `paymentId` doesn't exist
+    - `receiptId` doesn't match the transaction
+    - Payment belongs to a different user/API key
+    
+    **Solution:** Verify you're using the correct IDs from the settlement response.
+  </Accordion>
+  
+  <Accordion title="Payment Not Settled (402)">
+    **Error Response:**
+    ```json
+    {
+      "error": "payment_not_settled",
+      "status": "pending"
+    }
+    ```
+    
+    **Solution:** Complete the settlement step before retrying the endpoint.
+  </Accordion>
+  
+  <Accordion title="Payment Not Found (404)">
+    **Error Response:**
+    ```json
+    {
+      "error": "payment_not_found"
+    }
+    ```
+    
+    **Causes:**
+    - Invalid `paymentId`
+    - Payment belongs to different user
+    - Payment was already consumed and expired
+  </Accordion>
+</AccordionGroup>
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Automate the Flow" icon="robot">
+    Build helper functions that handle the 3-step flow automatically
+  </Card>
+  
+  <Card title="Cache Receipt IDs" icon="database">
+    Store receipt IDs to avoid duplicate charges for the same request
+  </Card>
+  
+  <Card title="Handle Retries" icon="rotate">
+    Implement exponential backoff for network errors during settlement
+  </Card>
+  
+  <Card title="Monitor Balance" icon="chart-line">
+    Check your balance before making paid requests to avoid 402 errors
+  </Card>
+</CardGroup>
+
+## Available Paid Endpoints
+
+<Card title="Quote Endpoint" icon="comment-quote">
+  **Endpoint:** `GET /v1/protected/quote`
+  
+  **Cost:** 25 cents per request
+  
+  **Query Parameters:**
+  - `topic` (optional): Topic for the quote (default: "general")
+  
+  **Example:**
+  ```bash
+  curl "http://localhost:3001/v1/protected/quote?topic=blockchain" \
+    -H "Authorization: Bearer xk_live_..."
+  ```
+</Card>
+
+<Info>
+  More paid endpoints will be added. Each will follow the same x402 protocol.
+</Info>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="API Reference" icon="code" href="/api/x402">
+    Complete x402 API documentation
+  </Card>
+  
+  <Card title="Monitor Usage" icon="chart-simple" href="/guides/billing-credits">
+    Track your spending and usage patterns
+  </Card>
+</CardGroup>

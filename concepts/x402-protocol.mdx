@@ -1,0 +1,278 @@
+---
+title: "x402 Protocol"
+description: "Understand the x402 payment protocol and challenge-response flow"
+---
+
+## What is x402?
+
+The x402 protocol is a standardized payment flow built on HTTP 402 (Payment Required). It enables machine-readable payment requirements, allowing clients to automatically detect payment needs, settle transactions, and retry requests without custom per-API billing logic.
+
+<Info>
+The x402 protocol is inspired by HTTP 402 Payment Required, a status code originally reserved for future payment systems.
+</Info>
+
+## How it Works
+
+The x402 protocol follows a three-step challenge-response pattern:
+
+### 1. Initial Request (Payment Challenge)
+
+When you make a request to a paid endpoint without payment credentials, the server responds with HTTP 402 and a payment challenge:
+
+```json
+{
+  "error": "payment_required",
+  "message": "This endpoint requires payment. Settle first and retry with payment proof.",
+  "x402": {
+    "version": "0.1-draft",
+    "paymentId": "x402tx_abc123",
+    "amountCents": 10,
+    "amountUsd": 0.10,
+    "currency": "USD",
+    "endpoint": "/api/v1/x402/quote",
+    "settlementEndpoint": "/api/v1/x402/settle",
+    "facilitator": "internal-simulator",
+    "expiresAt": "2026-03-03T23:00:00.000Z"
+  }
+}
+```
+
+This response includes:
+
+- **paymentId**: Unique identifier for this payment transaction
+- **amountCents**: Cost in cents (USD)
+- **settlementEndpoint**: Where to settle the payment
+- **expiresAt**: Payment challenge expiration time (10 minutes)
+
+### 2. Settlement
+
+To settle the payment, send a POST request to the settlement endpoint:
+
+```bash
+curl -X POST https://api.actumx.com/api/v1/x402/settle \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "paymentId": "x402tx_abc123"
+  }'
+```
+
+**Success Response:**
+
+```json
+{
+  "receiptId": "receipt_xyz789",
+  "paymentId": "x402tx_abc123",
+  "status": "settled",
+  "amountCents": 10,
+  "settledAt": "2026-03-03T22:30:00.000Z"
+}
+```
+
+**Insufficient Balance Response (HTTP 402):**
+
+```json
+{
+  "error": "insufficient_balance",
+  "requiredCents": 10,
+  "balanceCents": 5,
+  "message": "Top up balance in dashboard before settling this x402 payment."
+}
+```
+
+<Warning>
+You must have sufficient credit balance to settle x402 payments. Top up your account in the dashboard if needed.
+</Warning>
+
+### 3. Retry with Payment Proof
+
+Once settled, retry the original request with payment headers:
+
+```bash
+curl https://api.actumx.com/api/v1/x402/quote \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "X-Payment-Id: x402tx_abc123" \
+  -H "X-Payment-Proof: receipt_xyz789"
+```
+
+The server validates the payment proof and returns the protected resource:
+
+```json
+{
+  "data": {
+    "topic": "general",
+    "insight": "x402 allows machine-readable payment requirements...",
+    "generatedAt": "2026-03-03T22:30:05.000Z"
+  },
+  "payment": {
+    "paymentId": "x402tx_abc123",
+    "receiptId": "receipt_xyz789",
+    "amountCents": 10,
+    "status": "completed"
+  }
+}
+```
+
+## Transaction Lifecycle
+
+An x402 transaction goes through these states:
+
+| Status | Description |
+|--------|-------------|
+| `pending` | Payment challenge issued, awaiting settlement |
+| `settled` | Payment settled, ready to be consumed |
+| `completed` | Payment consumed, resource delivered |
+
+<Note>
+Payments can only be used once. After completion, the transaction is marked as consumed and cannot be reused.
+</Note>
+
+## Implementation Details
+
+The x402 protocol is implemented in the ActumX API service layer:
+
+**Database Schema** (`x402_transactions` table):
+
+- **id**: Unique transaction ID (prefixed with `x402tx_`)
+- **userId**: Owner of the transaction
+- **apiKeyId**: API key used for the request
+- **endpoint**: Protected endpoint path
+- **amountCents**: Cost in cents
+- **status**: Transaction status (pending/settled/completed)
+- **receiptId**: Payment receipt after settlement
+- **consumedAt**: Timestamp when payment was used
+- **metadata**: Additional context (e.g., query parameters)
+
+**Source Reference**: See `/home/daytona/workspace/source/api/src/modules/x402/service.ts:229-248` for the payment challenge builder and `/home/daytona/workspace/source/api/src/modules/x402/service.ts:250-336` for the settlement logic.
+
+## Credit Deduction
+
+When you settle an x402 payment, the system:
+
+1. Verifies you have sufficient balance
+2. Creates a debit entry in the credit ledger
+3. Updates the transaction status to `settled`
+4. Generates a receipt ID for proof
+
+```typescript
+// Credit ledger entry (source: service.ts:307-315)
+await db.insert(creditLedger).values({
+  id: newId("ledger"),
+  userId: apiKey.userId,
+  direction: "debit",
+  amountCents: transaction.amountCents,
+  source: "api_request",
+  referenceId: transaction.id,
+  createdAt: timestamp,
+});
+```
+
+## Usage Tracking
+
+When a payment is consumed (step 3), a usage event is recorded:
+
+```typescript
+// Usage event tracking (source: service.ts:412-422)
+await db.insert(usageEvents).values({
+  id: newId("usage"),
+  userId: apiKey.userId,
+  apiKeyId: apiKey.id,
+  endpoint: X402_PAID_ENDPOINT,
+  method: "GET",
+  units: 1,
+  costCents: transaction.amountCents,
+  x402TransactionId: transaction.id,
+  createdAt: timestamp,
+});
+```
+
+This enables detailed billing analytics and usage tracking.
+
+## MCP Integration
+
+ActumX also implements the Model Context Protocol (MCP) over x402, providing JSON-RPC 2.0 endpoints for tool calls:
+
+**Available Tools:**
+
+- `wallet_balance`: Get Solana wallet balance for an agent
+
+**Example MCP Request:**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": {
+    "name": "wallet_balance",
+    "arguments": {
+      "agentId": "agent_abc123"
+    }
+  }
+}
+```
+
+**Response:**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "Agent MyAgent (7xK2...9pQs) balance: 1.500000 SOL (1500000000 lamports)."
+      }
+    ],
+    "structuredContent": {
+      "agentId": "agent_abc123",
+      "agentName": "MyAgent",
+      "publicKey": "7xK2...9pQs",
+      "balanceLamports": 1500000000,
+      "balanceSol": 1.5,
+      "network": "solana"
+    }
+  },
+  "id": 1
+}
+```
+
+<Info>
+MCP requests use standard API key authentication and don't require x402 payment flow for basic operations.
+</Info>
+
+## Best Practices
+
+1. **Store Receipt IDs**: Keep receipt IDs for audit trails and refund requests
+2. **Handle 402 Gracefully**: Build automatic retry logic after settlement
+3. **Monitor Balance**: Check credit balance before making paid requests
+4. **Set Timeouts**: Payment challenges expire after 10 minutes
+5. **Validate Responses**: Always check transaction status before retrying
+
+## Error Handling
+
+Common error scenarios:
+
+| Error | Cause | Solution |
+|-------|-------|----------|
+| `payment_not_found` | Invalid payment ID | Verify the payment ID from the challenge |
+| `insufficient_balance` | Not enough credits | Top up your account balance |
+| `invalid_payment_proof` | Wrong receipt ID | Ensure you're using the correct receipt |
+| `payment_not_settled` | Premature retry | Complete settlement before retrying |
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Making Paid Requests" icon="credit-card" href="/guides/making-paid-requests">
+    Learn how to implement x402 in your application
+  </Card>
+  <Card title="Billing & Credits" icon="wallet" href="/concepts/billing">
+    Understand the credit-based billing system
+  </Card>
+  <Card title="API Reference" icon="code" href="/api/x402">
+    View detailed API endpoints for x402
+  </Card>
+  <Card title="Dashboard Transactions" icon="chart-line" href="/dashboard/transactions">
+    Monitor your x402 transactions
+  </Card>
+</CardGroup>

@@ -1,0 +1,264 @@
+---
+title: Database Setup
+description: Set up and manage the PostgreSQL database for ActumX
+---
+
+## Overview
+
+ActumX uses PostgreSQL as its database, managed with Drizzle ORM for schema definitions and migrations.
+
+## PostgreSQL Setup with Docker
+
+### Start PostgreSQL
+
+The quickest way to get started is using Docker:
+
+```bash
+docker run --name actumx-postgres \
+  -e POSTGRES_USER=postgres \
+  -e POSTGRES_PASSWORD=postgres \
+  -e POSTGRES_DB=x402 \
+  -p 5432:5432 \
+  -d postgres:latest
+```
+
+This creates a database named `x402` accessible at:
+
+```
+postgres://postgres:postgres@localhost:5432/x402
+```
+
+### Verify Database is Running
+
+```bash
+docker ps
+```
+
+You should see the `actumx-postgres` container running.
+
+### Stop/Start Database
+
+Stop the database:
+
+```bash
+docker stop actumx-postgres
+```
+
+Start it again:
+
+```bash
+docker start actumx-postgres
+```
+
+### Remove Database
+
+To completely remove the database container:
+
+```bash
+docker stop actumx-postgres
+docker rm actumx-postgres
+```
+
+<Warning>
+This will delete all data in the database.
+</Warning>
+
+## Running Migrations
+
+ActumX uses Drizzle Kit for database migrations.
+
+### Initial Migration
+
+After setting up PostgreSQL, run the initial migrations:
+
+```bash
+cd api
+bun run db:migrate
+```
+
+This applies all pending migrations from the `api/drizzle/` directory.
+
+### Generate New Migrations
+
+When you modify the database schema in `src/db/schema.ts` or `src/db/auth-schema.ts`, generate a migration:
+
+```bash
+bun run db:generate
+```
+
+This creates a new migration file in `api/drizzle/` based on your schema changes.
+
+### Reset Database
+
+To completely reset the database and re-run all migrations:
+
+```bash
+bun run db:reset
+```
+
+<Warning>
+This will delete all data and recreate the database schema from scratch.
+</Warning>
+
+## Database Schema Overview
+
+The ActumX database schema is organized into two main files:
+
+### Authentication Schema
+
+Located at `api/src/db/auth-schema.ts`, this includes Better Auth tables:
+
+- **user** - User accounts with email and profile information
+- **account** - OAuth provider accounts linked to users
+- **session** - Active user sessions with tokens and metadata
+- **verification** - Email verification tokens
+
+### Application Schema
+
+Located at `api/src/db/schema.ts`, this includes:
+
+#### API Keys Table
+
+```typescript
+apiKeys
+├── id (text, primary key)
+├── userId (text, foreign key → user.id)
+├── name (text)
+├── keyPrefix (text)
+├── keyHash (text, unique)
+├── revokedAt (text, nullable)
+├── lastUsedAt (text, nullable)
+└── createdAt (text)
+```
+
+#### Payment Intents Table
+
+```typescript
+paymentIntents
+├── id (text, primary key)
+├── userId (text, foreign key → user.id)
+├── amountCents (integer)
+├── status (text)
+├── providerReference (text, nullable)
+├── createdAt (text)
+└── updatedAt (text)
+```
+
+#### Credit Ledger Table
+
+```typescript
+creditLedger
+├── id (text, primary key)
+├── userId (text, foreign key → user.id)
+├── direction (text) // "in" or "out"
+├── amountCents (integer)
+├── source (text)
+├── referenceId (text, nullable)
+└── createdAt (text)
+```
+
+#### X402 Transactions Table
+
+```typescript
+x402Transactions
+├── id (text, primary key)
+├── userId (text, foreign key → user.id)
+├── apiKeyId (text, foreign key → apiKeys.id)
+├── endpoint (text)
+├── method (text)
+├── amountCents (integer)
+├── status (text)
+├── paymentIntentId (text, foreign key → paymentIntents.id, nullable)
+├── receiptId (text, nullable)
+├── consumedAt (text, nullable)
+├── metadata (text, nullable)
+├── createdAt (text)
+└── updatedAt (text)
+```
+
+#### Usage Events Table
+
+```typescript
+usageEvents
+├── id (text, primary key)
+├── userId (text, foreign key → user.id)
+├── apiKeyId (text, foreign key → apiKeys.id)
+├── endpoint (text)
+├── method (text)
+├── units (integer)
+├── costCents (integer)
+├── x402TransactionId (text, foreign key → x402Transactions.id)
+└── createdAt (text)
+```
+
+#### Agents Table
+
+```typescript
+agents
+├── id (text, primary key)
+├── userId (text, foreign key → user.id)
+├── name (text)
+├── publicKey (text, unique)
+├── privateKey (text)
+└── createdAt (text)
+```
+
+## Database Configuration
+
+Drizzle configuration is located at `api/drizzle.config.ts`:
+
+```typescript
+import { defineConfig } from "drizzle-kit";
+import { env } from "./src/config/env";
+
+export default defineConfig({
+  schema: "./src/db/all-schema.ts",
+  out: "./drizzle",
+  dialect: "postgresql",
+  dbCredentials: {
+    url: env.DATABASE_URL,
+  },
+  strict: true,
+  verbose: true,
+});
+```
+
+## Connecting to the Database
+
+The database URL is configured via the `DATABASE_URL` environment variable:
+
+```bash
+DATABASE_URL=postgres://postgres:postgres@localhost:5432/x402
+```
+
+See [Environment Variables](/development/environment-variables) for more details.
+
+## Troubleshooting
+
+### Connection Refused
+
+If you get a connection error:
+
+1. Verify PostgreSQL is running: `docker ps`
+2. Check the port isn't in use: `lsof -i :5432`
+3. Verify DATABASE_URL in your `.env` file
+
+### Migration Failures
+
+If migrations fail:
+
+1. Check PostgreSQL logs: `docker logs actumx-postgres`
+2. Verify your schema syntax
+3. Try resetting: `bun run db:reset`
+
+### Schema Out of Sync
+
+If your database schema doesn't match your code:
+
+```bash
+# Generate a new migration
+bun run db:generate
+
+# Apply it
+bun run db:migrate
+```

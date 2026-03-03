@@ -1,0 +1,312 @@
+---
+title: Billing Dashboard
+description: Manage credits and view payment history
+---
+
+The Billing page allows you to manage your ActumX account credits, top up your balance, and review payment history. This section handles all financial aspects of using the platform.
+
+## Credit Balance Overview
+
+The main Billing page displays your account's credit management interface.
+
+### Billing Cards
+
+The page is organized into three main sections:
+
+1. **Billing** - Overview and description
+2. **Top Up Credits** - Add credits to your account
+3. **Recent Top Ups** - Payment history table
+
+## Viewing Credit Balance
+
+Your current credit balance is reflected through your payment history and usage. Credits are consumed as your agents make API requests and transactions via the x402 protocol.
+
+### Credit System
+
+ActumX uses a credit-based billing system:
+
+- Credits are denominated in cents (USD)
+- Example: 2500 credits = $25.00
+- Credits are deducted based on API usage
+- Low balance alerts help prevent service interruption
+
+## Topping Up Credits
+
+### Top Up Process
+
+1. Navigate to the "Top Up Credits" section
+2. Enter the amount in cents (not dollars)
+3. Click "Top Up" button
+4. Wait for confirmation
+
+### Amount Input
+
+**Format**: Enter amount in cents
+
+- **Minimum**: 100 cents ($1.00)
+- **Step**: Increments of 100
+- **Example inputs**:
+  - 1000 = $10.00
+  - 2500 = $25.00
+  - 5000 = $50.00
+  - 10000 = $100.00
+
+<Note>
+The input field shows "Amount in cents. Example: 2500 = $25.00" to help with conversion.
+</Note>
+
+### Top Up Form
+
+```
+Amount in cents. Example: 2500 = $25.00.
+
+[Amount input field] [Top Up button]
+
+Status: Ready
+```
+
+### Status Messages
+
+During the top-up process, status messages indicate progress:
+
+- **Ready** - System ready for new top-up
+- **Creating top-up...** - Processing your request
+- **Top-up settled** - Credits successfully added
+- **Failed: [error message]** - Issue occurred (see error for details)
+
+### Test Environment
+
+<Warning>
+**Development/Test Credits**
+
+The billing system currently processes "dummy credits" for testing purposes. This allows you to test the x402 payment flow without real financial transactions.
+</Warning>
+
+## Payment History
+
+The "Recent Top Ups" section displays your payment intent history.
+
+### Payment Intents Table
+
+View the last 50 payment intents with the following information:
+
+#### Table Columns
+
+**Intent**
+- Unique payment intent ID
+- Displayed in monospace font for easy copying
+- Format: `pi_[random_string]`
+
+**Amount**
+- Payment amount formatted as currency
+- Example: $25.00, $50.00, $100.00
+- Automatically formatted from cents to dollars
+
+**Status**
+- Payment intent status badge
+- Common statuses:
+  - `succeeded` - Payment completed successfully
+  - `pending` - Payment being processed
+  - `failed` - Payment unsuccessful
+
+**Created**
+- Timestamp of when the payment intent was created
+- Format: Human-readable date and time
+- Example: "Jan 15, 2026 2:30 PM"
+
+### Table Example
+
+```
+Intent                          Amount    Status      Created
+pi_1234567890abcdef            $25.00    succeeded   Jan 15, 2026 2:30 PM
+pi_0987654321fedcba            $50.00    succeeded   Jan 14, 2026 10:15 AM
+pi_abcdef1234567890            $10.00    succeeded   Jan 13, 2026 4:45 PM
+```
+
+## Understanding Billing Summary
+
+### Credit Usage
+
+Credits are consumed when:
+
+- **API Requests** - Each paid API call via x402 protocol
+- **Agent Transactions** - Blockchain transactions made by agents
+- **Premium Features** - Advanced capabilities (if enabled)
+
+### Cost Breakdown
+
+View detailed cost information on other pages:
+
+- **Transactions Page** - x402 transaction costs
+- **Usage Events** - Per-request cost breakdown
+- **Dashboard** - Overall spending summary
+
+## Usage Events
+
+For detailed usage tracking, navigate to the Usage page to see:
+
+- Individual API request costs
+- Endpoint-specific pricing
+- Timestamp of each billable event
+- Total costs per time period
+
+### Usage Events Table Structure
+
+```
+Event                   Endpoint              Cost      Time
+ue_1234567890          POST /v1/agents       $0.10     Jan 15, 2:30 PM
+ue_0987654321          GET /v1/transactions  $0.05     Jan 15, 2:28 PM
+```
+
+## Payment Methods
+
+### Current Implementation
+
+The current billing system operates as a test environment:
+
+- Credits added via "Top Up" button
+- No actual payment processing
+- Test mode for x402 protocol validation
+- Dummy credits for development and integration
+
+### Future Implementation
+
+Production billing will include:
+
+- Credit card payment integration
+- Automatic recharge options
+- Usage-based billing
+- Invoice generation
+- Payment method management
+
+## Billing Alerts
+
+<Tip>
+**Monitor Your Balance**
+
+Regularly check your credit balance to ensure uninterrupted service:
+
+- Review payment history weekly
+- Track usage events to understand consumption
+- Top up credits before balance runs low
+- Set up alerts for low balance (coming soon)
+</Tip>
+
+## Billing Cycle
+
+### Credit-Based System
+
+ActumX uses a prepaid credit system:
+
+1. **Purchase Credits** - Add credits to your account
+2. **Usage Deduction** - Credits consumed as you use the platform
+3. **Monitor Balance** - Track remaining credits
+4. **Replenish** - Top up when balance is low
+
+### No Recurring Charges
+
+- Pay only for what you use
+- No monthly or annual subscriptions
+- No automatic charges
+- Full control over spending
+
+## Troubleshooting
+
+### Top Up Failed
+
+**Common causes:**
+
+- Network connection issue
+- Invalid amount entered
+- Session expired
+- Server error
+
+**Solutions:**
+
+1. Check your internet connection
+2. Verify amount is at least 100 cents
+3. Refresh the page and try again
+4. Contact support if problem persists
+
+### Payment Intent Not Showing
+
+1. Refresh the page
+2. Check for error messages
+3. Verify the top-up completed successfully
+4. Wait a few seconds for processing
+
+### Balance Not Updating
+
+1. Payment intents may take a few seconds to settle
+2. Refresh the page
+3. Check the "Recent Top Ups" table for status
+4. Verify payment status is "succeeded"
+
+## Cost Optimization
+
+### Monitor Usage
+
+Track your spending patterns:
+
+- Review usage events regularly
+- Identify expensive operations
+- Optimize API call patterns
+- Use caching where appropriate
+
+### Efficient Agent Design
+
+<Tip>
+**Reduce Costs**
+
+- Batch API requests when possible
+- Cache frequently accessed data
+- Use webhooks instead of polling
+- Implement request retries with backoff
+- Monitor agent transaction patterns
+</Tip>
+
+## Billing Reports
+
+### Available Data
+
+Generate insights from:
+
+- Payment intent history
+- Usage events timeline
+- Transaction cost breakdown
+- Agent-specific spending
+
+### Export Options
+
+Currently, you can:
+
+- View data in the dashboard tables
+- Copy payment intent IDs
+- Screenshot for records
+
+<Note>
+CSV export and detailed billing reports are planned for future releases.
+</Note>
+
+## Account Limits
+
+### Current Limits
+
+- **Minimum Top Up**: 100 cents ($1.00)
+- **Maximum Top Up**: No enforced maximum (subject to change)
+- **Payment Intent History**: Last 50 records displayed
+
+### Rate Limits
+
+API usage rate limits are separate from billing and based on:
+
+- Your account tier
+- Number of API requests per minute
+- Total monthly usage
+
+## Next Steps
+
+- [View transaction history](/dashboard/transactions)
+- [Monitor usage events](/dashboard/transactions#usage-events)
+- [Understand x402 protocol](/concepts/x402-protocol)
+- [View billing API reference](/api/billing)

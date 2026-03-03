@@ -1,0 +1,479 @@
+---
+title: "System Architecture"
+description: "Understanding how ActumX is built and how components interact"
+---
+
+## Overview
+
+ActumX is built as a modern full-stack application with a clear separation between the API backend and the dashboard frontend. The system is designed around the x402 payment protocol, enabling standardized API monetization through HTTP 402 status codes.
+
+```mermaid
+graph TB
+    subgraph Client Layer
+        Dashboard[Next.js Dashboard]
+        APIClient[API Clients/SDKs]
+        MCPClient[MCP AI Agents]
+    end
+    
+    subgraph API Layer
+        Gateway[Elysia HTTP Server]
+        Auth[Better Auth]
+        CORS[CORS Middleware]
+    end
+    
+    subgraph Business Logic
+        AgentModule[Agents Module]
+        APIKeyModule[API Keys Module]
+        BillingModule[Billing Module]
+        X402Module[x402 Module]
+        ActivityModule[Activity Module]
+    end
+    
+    subgraph Data Layer
+        Drizzle[Drizzle ORM]
+        Postgres[(PostgreSQL)]
+    end
+    
+    subgraph External Services
+        Solana[Solana Blockchain]
+    end
+    
+    Dashboard --> Gateway
+    APIClient --> Gateway
+    MCPClient --> Gateway
+    
+    Gateway --> Auth
+    Gateway --> CORS
+    Gateway --> AgentModule
+    Gateway --> APIKeyModule
+    Gateway --> BillingModule
+    Gateway --> X402Module
+    Gateway --> ActivityModule
+    
+    AgentModule --> Drizzle
+    APIKeyModule --> Drizzle
+    BillingModule --> Drizzle
+    X402Module --> Drizzle
+    ActivityModule --> Drizzle
+    
+    Drizzle --> Postgres
+    
+    AgentModule --> Solana
+```
+
+## Technology Stack
+
+### Backend (API)
+
+The API is built on modern, high-performance technologies:
+
+<CardGroup cols={2}>
+  <Card title="Bun Runtime" icon="rabbit">
+    Fast JavaScript runtime that's 4x faster than Node.js for HTTP servers
+  </Card>
+  <Card title="Elysia Framework" icon="bolt">
+    End-to-end type-safe HTTP framework built specifically for Bun
+  </Card>
+  <Card title="Drizzle ORM" icon="database">
+    TypeScript-first ORM with full type safety and zero-cost abstractions
+  </Card>
+  <Card title="PostgreSQL" icon="elephant">
+    Production-grade relational database for reliable data storage
+  </Card>
+</CardGroup>
+
+#### Backend Structure
+
+```
+api/src/
+├── modules/              # Feature modules
+│   ├── agents/          # Agent (wallet) management
+│   ├── api-keys/        # API key generation & auth
+│   ├── billing/         # Credit top-ups & ledger
+│   ├── x402/            # x402 protocol implementation
+│   └── activity/        # Usage tracking
+├── services/            # Shared business logic
+│   ├── auth-context.service.ts
+│   ├── api-key-context.service.ts
+│   ├── credits.service.ts
+│   └── solana-balance.service.ts
+├── db/                  # Database layer
+│   ├── schema.ts        # Drizzle schema definitions
+│   └── client.ts        # Database connection
+├── plugins/             # Elysia plugins
+│   └── openapi.ts       # OpenAPI documentation
+├── config/              # Configuration
+│   ├── env.ts           # Environment variables
+│   └── constants.ts     # Application constants
+├── auth.ts              # Better Auth setup
+└── app.ts               # Main Elysia app
+```
+
+### Frontend (Dashboard)
+
+The dashboard provides a modern web interface for managing your ActumX account:
+
+<CardGroup cols={2}>
+  <Card title="Next.js 16" icon="react">
+    React framework with App Router for optimal performance
+  </Card>
+  <Card title="shadcn/ui" icon="palette">
+    Beautiful, accessible component library built on Radix UI
+  </Card>
+  <Card title="Tailwind CSS" icon="brush">
+    Utility-first CSS framework for rapid UI development
+  </Card>
+  <Card title="TypeScript" icon="code">
+    End-to-end type safety from frontend to backend
+  </Card>
+</CardGroup>
+
+#### Frontend Structure
+
+```
+dashboard/
+├── app/                        # Next.js App Router
+│   ├── (dashboard)/           # Protected dashboard routes
+│   │   ├── overview/          # Dashboard home
+│   │   ├── agents/            # Agent management
+│   │   ├── api-keys/          # API key management
+│   │   ├── billing/           # Billing & credits
+│   │   ├── transactions/      # x402 transaction history
+│   │   └── simulator/         # Payment flow simulator
+│   ├── login/                 # Authentication
+│   └── layout.tsx             # Root layout
+├── components/                 # React components
+│   ├── ui/                    # shadcn/ui components
+│   └── dashboard/             # Dashboard-specific components
+└── lib/                        # Utilities
+    ├── api.ts                 # API client
+    ├── server-api.ts          # Server-side API calls
+    └── server-auth.ts         # Server-side auth helpers
+```
+
+## Core Components
+
+### Authentication System
+
+ActumX uses **Better Auth** for secure, session-based authentication:
+
+- Email/password authentication
+- HTTP-only cookies for session management
+- CORS-enabled for cross-origin requests
+- Session TTL: 30 days
+- Production: Secure cookies with cross-subdomain support
+
+```typescript
+// Authentication flow
+POST /auth/api/sign-up/email  // Register
+POST /auth/api/sign-in/email  // Login (returns session cookie)
+POST /auth/api/sign-out       // Logout
+GET  /auth/api/session         // Get current session
+```
+
+### Agent Management
+
+Agents are Solana-based wallets managed by the platform:
+
+- Each agent has a unique Solana key pair
+- Private keys are base64-encoded and stored securely
+- Public keys are used for blockchain transactions
+- Supports devnet funding for testing
+- Balance checking via Solana RPC
+
+**Database Schema:**
+```sql
+agents (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  public_key TEXT UNIQUE NOT NULL,
+  private_key TEXT NOT NULL,
+  created_at TEXT NOT NULL
+)
+```
+
+### API Key System
+
+Secure API key generation and management:
+
+- Keys are hashed using cryptographic hashing before storage
+- Only key prefixes are visible after creation (first 14 characters)
+- Keys can be revoked but not deleted (soft delete)
+- Track last usage timestamp
+- Used for MCP and programmatic access
+
+**Database Schema:**
+```sql
+api_keys (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  key_prefix TEXT NOT NULL,
+  key_hash TEXT UNIQUE NOT NULL,
+  revoked_at TEXT,
+  last_used_at TEXT,
+  created_at TEXT NOT NULL
+)
+```
+
+### Credit-Based Billing
+
+Simple credit ledger system for tracking payments:
+
+- All amounts stored in cents (integer precision)
+- Double-entry ledger: credits (top-ups) and debits (usage)
+- Top-up via `POST /v1/billing/top-up`
+- Balance computed as sum of all ledger entries
+- Payment intents track top-up transactions
+
+**Database Schema:**
+```sql
+credit_ledger (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  direction TEXT NOT NULL,      -- 'credit' or 'debit'
+  amount_cents INTEGER NOT NULL,
+  source TEXT NOT NULL,          -- 'top_up', 'api_request', etc.
+  reference_id TEXT,             -- FK to payment_intents or x402_transactions
+  created_at TEXT NOT NULL
+)
+```
+
+### x402 Payment Flow
+
+The core monetization feature implementing the x402 protocol:
+
+#### Payment States
+
+1. **pending**: Payment challenge issued, awaiting settlement
+2. **settled**: Credits deducted, receipt issued, ready for consumption
+3. **completed**: Request fulfilled with payment proof
+
+#### Flow Implementation
+
+<Steps>
+  <Step title="Challenge Phase">
+    When a protected endpoint is accessed without payment:
+    
+    ```typescript
+    // src/modules/x402/service.ts:339
+    const txId = newId("x402tx");
+    await db.insert(x402Transactions).values({
+      id: txId,
+      userId: apiKey.userId,
+      apiKeyId: apiKey.id,
+      endpoint: X402_PAID_ENDPOINT,
+      amountCents: X402_PAID_REQUEST_COST_CENTS, // 25 cents
+      status: "pending"
+    });
+    
+    return HTTP 402 with payment details;
+    ```
+  </Step>
+  
+  <Step title="Settlement Phase">
+    Client posts to `/v1/x402/settle` with payment ID:
+    
+    ```typescript
+    // src/modules/x402/service.ts:250
+    // 1. Verify transaction exists and belongs to user
+    // 2. Check sufficient balance
+    // 3. Create debit ledger entry
+    // 4. Update transaction status to 'settled'
+    // 5. Return receipt ID
+    ```
+  </Step>
+  
+  <Step title="Consumption Phase">
+    Client retries with payment proof headers:
+    
+    ```typescript
+    // src/modules/x402/service.ts:338
+    // 1. Verify payment ID and receipt match
+    // 2. Check transaction is settled
+    // 3. Update status to 'completed'
+    // 4. Create usage event
+    // 5. Return protected resource
+    ```
+  </Step>
+</Steps>
+
+**Database Schema:**
+```sql
+x402_transactions (
+  id TEXT PRIMARY KEY,           -- Payment ID
+  user_id TEXT NOT NULL,
+  api_key_id TEXT NOT NULL,
+  endpoint TEXT NOT NULL,
+  method TEXT NOT NULL,
+  amount_cents INTEGER NOT NULL,
+  status TEXT NOT NULL,          -- 'pending', 'settled', 'completed'
+  payment_intent_id TEXT,
+  receipt_id TEXT,               -- Payment proof
+  consumed_at TEXT,              -- When request was fulfilled
+  metadata TEXT,                 -- JSON for request params
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+)
+```
+
+### MCP Integration
+
+ActumX provides a Model Context Protocol (MCP) server for AI agent integration:
+
+- JSON-RPC 2.0 protocol
+- Tool: `wallet_balance` - Check Solana wallet balances
+- Authenticated via API keys
+- Supports both GET and POST methods
+- Returns structured content for AI consumption
+
+**Endpoints:**
+- `GET/POST /mcp` - MCP JSON-RPC endpoint
+
+**Example Tool Call:**
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": {
+    "name": "wallet_balance",
+    "arguments": {"agentId": "agent_abc123"}
+  }
+}
+```
+
+## Data Flow: x402 Payment
+
+Here's how data flows through the system for a complete x402 payment:
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant API
+    participant X402Service
+    participant DB
+    participant CreditsService
+    
+    Note over Client,CreditsService: 1. Challenge Phase
+    Client->>API: GET /v1/protected/quote (x-api-key)
+    API->>X402Service: quote(request, query)
+    X402Service->>DB: INSERT x402_transactions (status='pending')
+    X402Service-->>API: 402 + payment details
+    API-->>Client: 402 Payment Required
+    
+    Note over Client,CreditsService: 2. Settlement Phase
+    Client->>API: POST /v1/x402/settle (paymentId)
+    API->>X402Service: settle(request, {paymentId})
+    X402Service->>DB: SELECT x402_transactions WHERE id=paymentId
+    X402Service->>CreditsService: computeBalanceCents(userId)
+    CreditsService->>DB: SELECT SUM from credit_ledger
+    CreditsService-->>X402Service: balanceCents
+    X402Service->>DB: INSERT credit_ledger (direction='debit')
+    X402Service->>DB: UPDATE x402_transactions (status='settled', receiptId)
+    X402Service-->>API: {receiptId, status='settled'}
+    API-->>Client: 200 OK with receipt
+    
+    Note over Client,CreditsService: 3. Consumption Phase
+    Client->>API: GET /v1/protected/quote (x-payment-id, x-payment-proof)
+    API->>X402Service: quote(request, query)
+    X402Service->>DB: SELECT x402_transactions WHERE id & receipt match
+    X402Service->>DB: UPDATE x402_transactions (status='completed')
+    X402Service->>DB: INSERT usage_events
+    X402Service->>DB: UPDATE api_keys (lastUsedAt)
+    X402Service-->>API: {data, payment}
+    API-->>Client: 200 OK with protected data
+```
+
+## Configuration
+
+### Environment Variables
+
+**API (.env):**
+```bash
+PORT=3001
+DATABASE_URL=postgresql://user:pass@localhost:5432/actumx
+BETTER_AUTH_URL=http://localhost:3001
+BETTER_AUTH_SECRET=your-secret-key
+DASHBOARD_ORIGIN=http://localhost:3000
+```
+
+**Dashboard (.env.local):**
+```bash
+NEXT_PUBLIC_API_URL=http://localhost:3001
+```
+
+### Constants
+
+Key application constants defined in `api/src/config/constants.ts:1`:
+
+```typescript
+export const X402_PAID_ENDPOINT = "/v1/protected/quote";
+export const X402_PAID_REQUEST_COST_CENTS = 25; // $0.25
+export const X402_SETTLEMENT_ENDPOINT = "/v1/x402/settle";
+export const SESSION_TTL_DAYS = 30;
+```
+
+## Deployment Architecture
+
+ActumX is designed for modern cloud deployment:
+
+<CardGroup cols={2}>
+  <Card title="API Server" icon="server">
+    Deploy on platforms supporting Bun runtime (Fly.io, Railway, self-hosted)
+  </Card>
+  <Card title="Dashboard" icon="window">
+    Deploy to Vercel, Netlify, or any Next.js hosting platform
+  </Card>
+  <Card title="Database" icon="database">
+    Managed PostgreSQL (Neon, Supabase, AWS RDS, etc.)
+  </Card>
+  <Card title="Blockchain" icon="link">
+    Connects to Solana mainnet/devnet via public RPC endpoints
+  </Card>
+</CardGroup>
+
+### Production Considerations
+
+- **CORS**: Configure `DASHBOARD_ORIGIN` to match your production domain
+- **Cookies**: Production enables secure, cross-subdomain cookies (`.actumx.app`)
+- **Database**: Use connection pooling for PostgreSQL
+- **Solana RPC**: Consider using a dedicated RPC provider for reliability
+- **API Keys**: Rotate `BETTER_AUTH_SECRET` regularly
+
+## Performance
+
+- **Bun Runtime**: 4x faster than Node.js for HTTP operations
+- **Database Indexing**: All foreign keys and user_id columns are indexed
+- **Type Safety**: Zero runtime overhead from TypeScript types
+- **Connection Pooling**: Drizzle handles PostgreSQL connections efficiently
+
+## Security Features
+
+1. **API Key Hashing**: Keys are hashed before storage, never stored in plain text
+2. **HTTP-Only Cookies**: Session tokens not accessible via JavaScript
+3. **CORS Protection**: Strict origin validation
+4. **SQL Injection**: Drizzle ORM prevents SQL injection via parameterized queries
+5. **Private Key Storage**: Agent private keys are base64-encoded (consider encryption for production)
+
+<Warning>
+  For production deployments, consider adding encryption-at-rest for agent private keys in the database.
+</Warning>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="API Reference" icon="book" href="/api/introduction">
+    Explore detailed API endpoint documentation
+  </Card>
+  <Card title="x402 Protocol" icon="handshake" href="/concepts/x402-protocol">
+    Learn the x402 payment protocol specification
+  </Card>
+  <Card title="Development Guide" icon="code" href="/development/running-locally">
+    Set up a local development environment
+  </Card>
+  <Card title="Deployment" icon="rocket" href="/development/deployment">
+    Deploy ActumX to production
+  </Card>
+</CardGroup>

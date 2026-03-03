@@ -1,0 +1,376 @@
+---
+title: "Agents"
+description: "Understand agents and Solana wallet integration in ActumX"
+---
+
+## What are Agents?
+
+Agents in ActumX are autonomous entities with their own Solana wallets. Each agent has:
+
+- A unique identifier
+- A Solana public/private key pair
+- Independent wallet balance
+- Lifecycle management
+
+Agents enable you to create multiple independent actors with separate blockchain identities, useful for:
+
+- Multi-tenant applications
+- Testing different wallet strategies
+- Isolating funds across use cases
+- Automated trading bots
+- DeFi protocol interactions
+
+<Info>
+Each agent is associated with your user account but operates as an independent blockchain entity.
+</Info>
+
+## Agent Structure
+
+An agent contains the following properties:
+
+```typescript
+interface Agent {
+  id: string;              // Unique agent ID (prefixed with "agent_")
+  userId: string;          // Your user ID
+  name: string;            // Human-readable name (2-80 characters)
+  publicKey: string;       // Solana public key (Base58)
+  privateKey: string;      // Encrypted private key (Base64, shown once)
+  createdAt: string;       // ISO 8601 timestamp
+}
+```
+
+### Database Schema
+
+Agents are stored in the `agents` table:
+
+```sql
+CREATE TABLE agents (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  public_key TEXT NOT NULL UNIQUE,
+  private_key TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX idx_agents_user_id ON agents(user_id);
+```
+
+**Source Reference**: `/home/daytona/workspace/source/api/src/db/schema.ts:74-83`
+
+## Solana Wallet Integration
+
+Each agent is backed by a Solana wallet generated using `@solana/web3.js`:
+
+### Key Generation
+
+When you create an agent, a new keypair is generated:
+
+```typescript
+import { Keypair } from "@solana/web3.js";
+
+// Generate new wallet (source: service.ts:46-49)
+const wallet = Keypair.generate();
+const publicKey = wallet.publicKey.toBase58();
+const privateKeyBase64 = Buffer.from(wallet.secretKey).toString("base64");
+```
+
+<Warning>
+The private key is shown **only once** during agent creation. Store it securely - ActumX cannot recover lost private keys.
+</Warning>
+
+### Balance Checking
+
+ActumX integrates with Solana RPC to fetch real-time balances:
+
+```typescript
+interface BalanceResponse {
+  balanceLamports: number;  // Balance in lamports (1 SOL = 1B lamports)
+  balanceSol: number;       // Balance in SOL
+  error: string | null;     // Error message if balance check failed
+}
+```
+
+Example balance check:
+
+```bash
+curl https://api.actumx.com/api/v1/agents \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+Response:
+
+```json
+{
+  "agents": [
+    {
+      "id": "agent_abc123",
+      "name": "Trading Bot",
+      "publicKey": "7xK2Ef9pQs...",
+      "createdAt": "2026-03-03T20:00:00Z",
+      "balanceLamports": 1500000000,
+      "balanceSol": 1.5,
+      "error": null
+    }
+  ]
+}
+```
+
+## Agent Lifecycle
+
+### 1. Creation
+
+Create an agent via the API:
+
+```bash
+curl -X POST https://api.actumx.com/api/v1/agents \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "My Trading Agent"
+  }'
+```
+
+**Response:**
+
+```json
+{
+  "agentId": "agent_abc123",
+  "name": "My Trading Agent",
+  "publicKey": "7xK2Ef9pQs...",
+  "privateKey": "base64_encoded_secret_key",
+  "createdAt": "2026-03-03T20:00:00Z",
+  "balanceLamports": 0,
+  "balanceSol": 0,
+  "warning": "Store this private key now. It is shown only once."
+}
+```
+
+<Note>
+Agent names must be between 2-80 characters. Choose descriptive names to easily identify agents.
+</Note>
+
+### 2. Funding (Devnet)
+
+For testing on Solana devnet, you can airdrop SOL to your agent:
+
+```bash
+curl -X POST https://api.actumx.com/api/v1/agents/agent_abc123/fund-devnet \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "amountSol": 1.5
+  }'
+```
+
+**Response:**
+
+```json
+{
+  "agentId": "agent_abc123",
+  "network": "solana-devnet",
+  "amountSol": 1.5,
+  "signature": "5wJ8K...",
+  "explorerUrl": "https://explorer.solana.com/tx/5wJ8K...?cluster=devnet",
+  "publicKey": "7xK2Ef9pQs...",
+  "balanceLamports": 1500000000,
+  "balanceSol": 1.5
+}
+```
+
+**Airdrop Limits:**
+
+- Minimum: 0.01 SOL
+- Maximum: 2 SOL per request
+
+<Warning>
+Devnet airdrops are for testing only. For mainnet, transfer SOL to the agent's public key using a standard wallet.
+</Warning>
+
+### 3. Usage in MCP Tools
+
+Agents can be referenced in Model Context Protocol (MCP) tool calls:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": {
+    "name": "wallet_balance",
+    "arguments": {
+      "agentId": "agent_abc123"
+    }
+  }
+}
+```
+
+If you omit `agentId`, the system uses your most recently created agent:
+
+```typescript
+// Auto-select latest agent (source: service.ts:56-67)
+const [latestAgent] = await db
+  .select({ id: agents.id, name: agents.name, publicKey: agents.publicKey })
+  .from(agents)
+  .where(eq(agents.userId, userId))
+  .orderBy(desc(agents.createdAt))
+  .limit(1);
+```
+
+### 4. Management
+
+List all your agents:
+
+```bash
+curl https://api.actumx.com/api/v1/agents \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+Agents are ordered by creation date (newest first).
+
+## Implementation Details
+
+### Service Layer
+
+The agent service handles all agent operations:
+
+**Key Functions:**
+
+- `list(request)`: Retrieve all agents with balances
+- `create(request, payload)`: Generate new agent with Solana wallet
+- `fundDevnet(request, agentId, payload)`: Airdrop devnet SOL
+
+**Source Reference**: `/home/daytona/workspace/source/api/src/modules/agents/service.ts`
+
+### Validation
+
+Agent creation validates:
+
+```typescript
+// Model validation (source: model.ts:4-6)
+const createAgentBody = t.Object({
+  name: t.String({ minLength: 2, maxLength: 80 }),
+});
+```
+
+### Security Considerations
+
+1. **Private Key Storage**: Private keys are stored encrypted in the database
+2. **User Isolation**: Agents are scoped to user accounts via foreign key
+3. **Cascade Deletion**: Deleting a user removes all associated agents
+4. **Public Key Uniqueness**: Each Solana public key can only belong to one agent
+
+## Balance Fetching
+
+ActumX uses the `SolanaBalanceService` to query on-chain balances:
+
+```typescript
+interface BalanceResult {
+  balanceLamports: number | null;
+  balanceSol: number | null;
+  error: string | null;
+}
+
+// Fetch balance for agent (source: service.ts:30-35)
+const withBalances = await Promise.all(
+  wallets.map(async (wallet) => {
+    const balance = await SolanaBalanceService.getBalance(wallet.publicKey);
+    return { ...wallet, ...balance };
+  })
+);
+```
+
+Balances are fetched in parallel for efficient list operations.
+
+## Network Configuration
+
+ActumX supports multiple Solana networks:
+
+- **Devnet**: For testing and development (airdrop available)
+- **Mainnet**: For production use (manual funding required)
+
+```typescript
+import { clusterApiUrl, Connection } from "@solana/web3.js";
+
+// Connect to devnet (source: service.ts:99)
+const connection = new Connection(clusterApiUrl("devnet"), "confirmed");
+```
+
+<Info>
+The network is configured server-side. Check with your deployment to confirm which network is active.
+</Info>
+
+## Use Cases
+
+### 1. Automated Trading
+
+Create agents for different trading strategies:
+
+```bash
+# Create agents for different strategies
+curl -X POST https://api.actumx.com/api/v1/agents \
+  -d '{"name": "Momentum Strategy"}'
+
+curl -X POST https://api.actumx.com/api/v1/agents \
+  -d '{"name": "Arbitrage Bot"}'
+```
+
+### 2. Multi-Tenant SaaS
+
+Assign one agent per customer:
+
+```bash
+curl -X POST https://api.actumx.com/api/v1/agents \
+  -d '{"name": "Customer ABC Corp"}'
+```
+
+### 3. Testing Scenarios
+
+Create test agents with different balances:
+
+```bash
+# Low balance agent
+curl -X POST https://api.actumx.com/api/v1/agents/agent_test1/fund-devnet \
+  -d '{"amountSol": 0.1}'
+
+# High balance agent
+curl -X POST https://api.actumx.com/api/v1/agents/agent_test2/fund-devnet \
+  -d '{"amountSol": 2}'
+```
+
+## Best Practices
+
+1. **Name Descriptively**: Use clear names like "Production Bot" or "Staging Wallet"
+2. **Secure Private Keys**: Store private keys in secure vaults (e.g., AWS Secrets Manager)
+3. **Monitor Balances**: Regularly check agent balances to avoid insufficient funds
+4. **Test on Devnet**: Always test agent operations on devnet before mainnet
+5. **Backup Keys**: Keep offline backups of critical agent private keys
+6. **Use Latest Agent**: Omit `agentId` in MCP calls to auto-select the newest agent
+
+## Error Handling
+
+Common agent errors:
+
+| Error | Cause | Solution |
+|-------|-------|----------|
+| `unauthorized` | Missing/invalid auth | Provide valid API key |
+| `agent not found` | Invalid agent ID | Verify agent exists and belongs to you |
+| `failed to fund agent on devnet` | Airdrop rate limit | Wait and retry, or reduce amount |
+| Name too short/long | Invalid name length | Use 2-80 characters |
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Creating Agents" icon="plus" href="/guides/creating-agents">
+    Step-by-step guide to creating your first agent
+  </Card>
+  <Card title="Dashboard - Agents" icon="wallet" href="/dashboard/agents">
+    Manage agents in the web dashboard
+  </Card>
+  <Card title="API Reference" icon="code" href="/api/agents">
+    View detailed agent API endpoints
+  </Card>
+  <Card title="x402 Protocol" icon="handshake" href="/concepts/x402-protocol">
+    Learn how agents work with x402 payments
+  </Card>
+</CardGroup>

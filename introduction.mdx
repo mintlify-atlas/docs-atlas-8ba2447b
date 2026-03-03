@@ -1,0 +1,167 @@
+---
+title: "Introduction to ActumX"
+description: "Monetize your APIs effortlessly with the x402 payment protocol"
+---
+
+## What is ActumX?
+
+ActumX is a SaaS platform that enables developers to monetize their APIs using the x402 payment protocol. Instead of building custom billing systems, ActumX provides a standardized way for APIs to request payments using HTTP 402 status codes, allowing clients to settle and retry requests automatically.
+
+The x402 protocol makes payment requirements machine-readable, eliminating the need for custom per-API billing logic. When your API requires payment, it responds with HTTP 402 and structured payment details. Clients can then settle the payment and retry with proof of payment - all handled programmatically.
+
+<CardGroup cols={2}>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Get started with ActumX in minutes - create an agent, generate an API key, and make your first paid request.
+  </Card>
+  <Card title="Architecture" icon="diagram-project" href="/architecture">
+    Understand how ActumX works under the hood and how the x402 payment flow operates.
+  </Card>
+  <Card title="x402 Protocol" icon="handshake" href="/concepts/x402-protocol">
+    Learn about the x402 payment protocol and how it enables automated API monetization.
+  </Card>
+  <Card title="API Reference" icon="code" href="/api/introduction">
+    Explore the complete API documentation with endpoints for agents, billing, and x402 transactions.
+  </Card>
+</CardGroup>
+
+## Key Features
+
+### Agent Management
+
+Create and manage Solana-based agents (wallets) that can interact with the x402 payment system. Each agent has its own public/private key pair for handling blockchain transactions.
+
+<CodeGroup>
+```bash Example: Create an Agent
+curl -X POST https://api.actumx.app/v1/agents \
+  -H "Cookie: better-auth.session_token=YOUR_SESSION" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "My First Agent"}'
+```
+
+```json Response
+{
+  "agentId": "agent_abc123",
+  "name": "My First Agent",
+  "publicKey": "8sXYz...",
+  "privateKey": "base64_encoded_key",
+  "balanceSol": 0,
+  "balanceLamports": 0,
+  "warning": "Store this private key now. It is shown only once."
+}
+```
+</CodeGroup>
+
+### API Key Authentication
+
+Generate API keys to authenticate requests to protected endpoints. API keys are hashed and stored securely, with only the prefix visible for identification.
+
+```bash
+curl -X POST https://api.actumx.app/v1/api-keys \
+  -H "Cookie: better-auth.session_token=YOUR_SESSION" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Production Key"}'
+```
+
+### Credit-Based Billing
+
+Top up your account with credits (in cents) to pay for API requests. The platform maintains a credit ledger tracking all debits and credits.
+
+<Note>
+Current pricing: **$0.25 per paid request** to the `/v1/protected/quote` endpoint
+</Note>
+
+### x402 Payment Flow
+
+The x402 protocol enables a three-step payment flow:
+
+1. **Challenge**: Request a protected endpoint without payment proof, receive HTTP 402 with payment details
+2. **Settlement**: Submit payment to the settlement endpoint, receive a receipt
+3. **Retry**: Retry the original request with payment ID and receipt proof
+
+<Steps>
+  <Step title="Initial Request">
+    Make a request to a protected endpoint like `/v1/protected/quote`
+  </Step>
+  <Step title="Receive Payment Challenge">
+    Get HTTP 402 response with payment details including amount, payment ID, and settlement endpoint
+  </Step>
+  <Step title="Settle Payment">
+    POST to `/v1/x402/settle` with the payment ID to deduct credits and receive a receipt
+  </Step>
+  <Step title="Complete Request">
+    Retry original request with `x-payment-id` and `x-payment-proof` headers to access the protected resource
+  </Step>
+</Steps>
+
+### Transaction Tracking
+
+Every x402 transaction is tracked with detailed status information:
+
+- **pending**: Payment challenge issued, awaiting settlement
+- **settled**: Payment settled, receipt issued, awaiting consumption
+- **completed**: Request completed successfully with payment proof
+
+### MCP Integration
+
+ActumX provides an MCP (Model Context Protocol) server for AI agent integration. The MCP endpoint supports tool calls like checking wallet balances directly from AI assistants.
+
+```bash
+curl -X POST https://api.actumx.app/mcp \
+  -H "x-api-key: YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+      "name": "wallet_balance",
+      "arguments": {"agentId": "agent_abc123"}
+    }
+  }'
+```
+
+## Why x402?
+
+Traditional API monetization requires:
+- Custom billing integration for each API
+- Complex subscription management
+- Manual payment reconciliation
+- Vendor-specific SDKs
+
+With x402:
+- ✅ Standardized payment protocol
+- ✅ Machine-readable payment requirements
+- ✅ Automatic retry logic
+- ✅ Pay-per-use pricing
+- ✅ No subscription overhead
+
+## Technology Stack
+
+<CardGroup cols={2}>
+  <Card title="Backend" icon="server">
+    **Elysia** HTTP server on **Bun** runtime with **Drizzle ORM** and **PostgreSQL**
+  </Card>
+  <Card title="Frontend" icon="window">
+    **Next.js** (App Router) with **shadcn/ui** components and **Tailwind CSS**
+  </Card>
+  <Card title="Authentication" icon="lock">
+    **Better Auth** for secure session management with email/password authentication
+  </Card>
+  <Card title="Blockchain" icon="link">
+    **Solana** integration via @solana/web3.js for agent wallet management
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+<CardGroup cols={3}>
+  <Card title="Get Started" icon="play" href="/quickstart">
+    Follow the quickstart guide
+  </Card>
+  <Card title="Learn Concepts" icon="book" href="/concepts/x402-protocol">
+    Understand x402 protocol
+  </Card>
+  <Card title="Explore API" icon="terminal" href="/api/introduction">
+    Browse API endpoints
+  </Card>
+</CardGroup>

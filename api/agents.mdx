@@ -1,0 +1,303 @@
+---
+title: "Agents"
+description: "Create and manage Solana wallet agents"
+---
+
+## Overview
+
+Agents are Solana wallet keypairs that can be used to sign transactions and interact with the Solana blockchain. Each agent has a unique public key and an encrypted private key.
+
+## List Agents
+
+<CodeGroup>
+```bash cURL
+curl https://api.actumx.app/v1/agents \
+  -H "x-api-key: actumx_live_abc123..."
+```
+
+```javascript JavaScript
+const response = await fetch('https://api.actumx.app/v1/agents', {
+  headers: {
+    'x-api-key': 'actumx_live_abc123...'
+  }
+});
+const data = await response.json();
+```
+</CodeGroup>
+
+### Response
+
+<ResponseField name="agents" type="array">
+  List of agent objects
+  
+  <Expandable title="Agent object">
+    <ResponseField name="id" type="string">
+      Unique agent identifier with `agent_` prefix
+    </ResponseField>
+    
+    <ResponseField name="name" type="string">
+      Display name for the agent
+    </ResponseField>
+    
+    <ResponseField name="publicKey" type="string">
+      Solana public key (base58 encoded)
+    </ResponseField>
+    
+    <ResponseField name="createdAt" type="string">
+      ISO 8601 timestamp of creation
+    </ResponseField>
+    
+    <ResponseField name="balanceSol" type="number">
+      Current balance in SOL
+    </ResponseField>
+    
+    <ResponseField name="balanceLamports" type="number">
+      Current balance in lamports
+    </ResponseField>
+    
+    <ResponseField name="network" type="string">
+      Network identifier (e.g., "solana")
+    </ResponseField>
+    
+    <ResponseField name="error" type="string | null">
+      Balance fetch error if any
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseExample>
+```json
+{
+  "agents": [
+    {
+      "id": "agent_abc123",
+      "name": "My Trading Bot",
+      "publicKey": "7xKzL3kQyH...",
+      "createdAt": "2024-03-01T10:00:00Z",
+      "balanceSol": 1.5,
+      "balanceLamports": 1500000000,
+      "network": "solana",
+      "error": null
+    }
+  ]
+}
+```
+</ResponseExample>
+
+---
+
+## Create Agent
+
+Creates a new Solana wallet agent with a generated keypair.
+
+<CodeGroup>
+```bash cURL
+curl -X POST https://api.actumx.app/v1/agents \
+  -H "x-api-key: actumx_live_abc123..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "My Trading Bot"
+  }'
+```
+
+```javascript JavaScript
+const response = await fetch('https://api.actumx.app/v1/agents', {
+  method: 'POST',
+  headers: {
+    'x-api-key': 'actumx_live_abc123...',
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    name: 'My Trading Bot'
+  })
+});
+const data = await response.json();
+```
+</CodeGroup>
+
+### Request Body
+
+<ParamField path="name" type="string" required>
+  Display name for the agent
+  
+  - Minimum length: 2 characters
+  - Maximum length: 80 characters
+</ParamField>
+
+### Response
+
+<ResponseField name="agentId" type="string">
+  Unique identifier for the created agent
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  Display name of the agent
+</ResponseField>
+
+<ResponseField name="publicKey" type="string">
+  Solana public key (base58 encoded)
+</ResponseField>
+
+<ResponseField name="privateKey" type="string">
+  Base64-encoded private key
+  
+  <Warning>
+    This is only shown once. Store it securely immediately.
+  </Warning>
+</ResponseField>
+
+<ResponseField name="createdAt" type="string">
+  ISO 8601 timestamp
+</ResponseField>
+
+<ResponseField name="balanceSol" type="number">
+  Initial balance in SOL (typically 0)
+</ResponseField>
+
+<ResponseField name="balanceLamports" type="number">
+  Initial balance in lamports
+</ResponseField>
+
+<ResponseField name="network" type="string">
+  Network identifier
+</ResponseField>
+
+<ResponseField name="warning" type="string">
+  Security warning about storing the private key
+</ResponseField>
+
+<ResponseExample>
+```json
+{
+  "agentId": "agent_abc123",
+  "name": "My Trading Bot",
+  "publicKey": "7xKzL3kQyH...",
+  "privateKey": "base64_encoded_key...",
+  "createdAt": "2024-03-01T10:00:00Z",
+  "balanceSol": 0,
+  "balanceLamports": 0,
+  "network": "solana",
+  "error": null,
+  "warning": "Store this private key now. It is shown only once."
+}
+```
+</ResponseExample>
+
+---
+
+## Fund Agent on Devnet
+
+Request an airdrop of SOL to an agent's wallet on Solana Devnet. This is useful for testing.
+
+<CodeGroup>
+```bash cURL
+curl -X POST https://api.actumx.app/v1/agents/agent_abc123/fund-devnet \
+  -H "x-api-key: actumx_live_abc123..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "amountSol": 1.0
+  }'
+```
+
+```javascript JavaScript
+const response = await fetch('https://api.actumx.app/v1/agents/agent_abc123/fund-devnet', {
+  method: 'POST',
+  headers: {
+    'x-api-key': 'actumx_live_abc123...',
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    amountSol: 1.0
+  })
+});
+const data = await response.json();
+```
+</CodeGroup>
+
+### Path Parameters
+
+<ParamField path="agentId" type="string" required>
+  The ID of the agent to fund
+</ParamField>
+
+### Request Body
+
+<ParamField path="amountSol" type="number">
+  Amount of SOL to request (default: 1.0)
+  
+  - Minimum: 0.01 SOL
+  - Maximum: 2 SOL
+</ParamField>
+
+### Response
+
+<ResponseField name="agentId" type="string">
+  Agent identifier
+</ResponseField>
+
+<ResponseField name="network" type="string">
+  Network name ("solana-devnet")
+</ResponseField>
+
+<ResponseField name="amountSol" type="number">
+  Amount of SOL requested
+</ResponseField>
+
+<ResponseField name="signature" type="string">
+  Transaction signature
+</ResponseField>
+
+<ResponseField name="explorerUrl" type="string">
+  Solana Explorer URL for the transaction
+</ResponseField>
+
+<ResponseField name="publicKey" type="string">
+  Agent's public key
+</ResponseField>
+
+<ResponseField name="balanceSol" type="number">
+  Updated balance in SOL
+</ResponseField>
+
+<ResponseField name="balanceLamports" type="number">
+  Updated balance in lamports
+</ResponseField>
+
+<ResponseExample>
+```json
+{
+  "agentId": "agent_abc123",
+  "network": "solana-devnet",
+  "amountSol": 1.0,
+  "signature": "5j7Kx...",
+  "explorerUrl": "https://explorer.solana.com/tx/5j7Kx...?cluster=devnet",
+  "publicKey": "7xKzL3kQyH...",
+  "balanceSol": 1.0,
+  "balanceLamports": 1000000000,
+  "network": "solana",
+  "error": null
+}
+```
+</ResponseExample>
+
+### Error Response
+
+If the airdrop fails (e.g., rate limit exceeded), you'll receive a 400 response:
+
+```json
+{
+  "error": "failed to fund agent on devnet"
+}
+```
+
+<Note>
+  Devnet airdrops are rate-limited by Solana. If you encounter errors, wait a few minutes before retrying.
+</Note>
+
+## Error Codes
+
+| Status | Error | Description |
+|--------|-------|-------------|
+| 401 | `unauthorized` | Missing or invalid API key |
+| 404 | `agent_not_found` | Agent doesn't exist or not owned by authenticated user |
+| 400 | Error message | Devnet funding failed (e.g., rate limit) |

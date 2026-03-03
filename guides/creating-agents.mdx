@@ -1,0 +1,267 @@
+---
+title: 'Creating Agents'
+description: 'Create and manage AI agents with Solana wallets'
+icon: 'robot'
+---
+
+## What are Agents?
+
+In ActumX, an agent is an entity with its own Solana wallet that can:
+- Hold SOL tokens on Solana devnet
+- Make authenticated API requests
+- Perform autonomous transactions
+- Interact with x402 payment endpoints
+
+Each agent has a unique wallet keypair stored securely in the database.
+
+## Creating Your First Agent
+
+<Steps>
+  <Step title="Create an Agent via API">
+    Make a POST request to create a new agent:
+    
+    <CodeGroup>
+    ```bash cURL
+    curl -X POST http://localhost:3001/v1/agents \
+      -H "Content-Type: application/json" \
+      -H "Cookie: YOUR_SESSION_COOKIE" \
+      -d '{
+        "name": "My First Agent"
+      }'
+    ```
+    
+    ```javascript JavaScript
+    const response = await fetch('http://localhost:3001/v1/agents', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+      body: JSON.stringify({
+        name: 'My First Agent'
+      })
+    });
+    
+    const agent = await response.json();
+    console.log(agent);
+    ```
+    
+    ```python Python
+    import requests
+    
+    response = requests.post(
+        'http://localhost:3001/v1/agents',
+        json={'name': 'My First Agent'},
+        cookies={'session': 'YOUR_SESSION_COOKIE'}
+    )
+    
+    agent = response.json()
+    print(agent)
+    ```
+    </CodeGroup>
+    
+    **Response:**
+    ```json
+    {
+      "agentId": "agent_a1b2c3d4e5f6",
+      "name": "My First Agent",
+      "publicKey": "5xK8F2JnV...",
+      "privateKey": "base64EncodedSecretKey==",
+      "balanceSol": 0,
+      "balanceLamports": 0,
+      "createdAt": "2026-03-03T22:30:00.000Z",
+      "warning": "Store this private key now. It is shown only once."
+    }
+    ```
+    
+    <Warning>
+      **Critical:** Save the `privateKey` immediately! It's only shown once during creation and cannot be retrieved later.
+    </Warning>
+  </Step>
+
+  <Step title="Understanding Agent Wallets">
+    When you create an agent, ActumX automatically generates a Solana keypair:
+    
+    **From the source code** (`api/src/modules/agents/service.ts:46-48`):
+    ```typescript
+    const wallet = Keypair.generate();
+    const publicKey = wallet.publicKey.toBase58();
+    const privateKeyBase64 = Buffer.from(wallet.secretKey).toString("base64");
+    ```
+    
+    - **Public Key**: Used for receiving SOL and identifying the wallet
+    - **Private Key**: Base64-encoded secret key for signing transactions
+    - **Network**: Solana Devnet by default
+  </Step>
+
+  <Step title="Fund Your Agent on Devnet">
+    Before your agent can make transactions, it needs SOL tokens. Use the devnet faucet endpoint:
+    
+    <CodeGroup>
+    ```bash cURL
+    curl -X POST http://localhost:3001/v1/agents/agent_a1b2c3d4e5f6/fund-devnet \
+      -H "Content-Type: application/json" \
+      -H "Cookie: YOUR_SESSION_COOKIE" \
+      -d '{
+        "amountSol": 1
+      }'
+    ```
+    
+    ```javascript JavaScript
+    const response = await fetch(
+      'http://localhost:3001/v1/agents/agent_a1b2c3d4e5f6/fund-devnet',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          amountSol: 1
+        })
+      }
+    );
+    
+    const result = await response.json();
+    console.log(result);
+    ```
+    
+    ```python Python
+    response = requests.post(
+        'http://localhost:3001/v1/agents/agent_a1b2c3d4e5f6/fund-devnet',
+        json={'amountSol': 1},
+        cookies={'session': 'YOUR_SESSION_COOKIE'}
+    )
+    
+    result = response.json()
+    print(result)
+    ```
+    </CodeGroup>
+    
+    **Response:**
+    ```json
+    {
+      "agentId": "agent_a1b2c3d4e5f6",
+      "network": "solana-devnet",
+      "amountSol": 1,
+      "signature": "3Xt7K2pQ...",
+      "explorerUrl": "https://explorer.solana.com/tx/3Xt7K2pQ...?cluster=devnet",
+      "publicKey": "5xK8F2JnV...",
+      "balanceSol": 1,
+      "balanceLamports": 1000000000
+    }
+    ```
+    
+    <Info>
+      The funding process uses Solana's `requestAirdrop` method and waits for transaction confirmation (`api/src/modules/agents/service.ts:102-111`).
+    </Info>
+  </Step>
+
+  <Step title="List Your Agents">
+    Retrieve all agents associated with your account:
+    
+    ```bash
+    curl http://localhost:3001/v1/agents \
+      -H "Cookie: YOUR_SESSION_COOKIE"
+    ```
+    
+    **Response:**
+    ```json
+    {
+      "agents": [
+        {
+          "id": "agent_a1b2c3d4e5f6",
+          "name": "My First Agent",
+          "publicKey": "5xK8F2JnV...",
+          "createdAt": "2026-03-03T22:30:00.000Z",
+          "balanceSol": 1,
+          "balanceLamports": 1000000000,
+          "error": null
+        }
+      ]
+    }
+    ```
+    
+    The list endpoint automatically fetches current balances from Solana for each agent.
+  </Step>
+</Steps>
+
+## Key Implementation Details
+
+### Agent Creation Flow
+
+From `api/src/modules/agents/service.ts:40-75`:
+
+1. Authenticate the user making the request
+2. Generate a new Solana keypair using `@solana/web3.js`
+3. Create a unique agent ID with prefix `agent_`
+4. Store the agent in the database with encrypted private key
+5. Return agent details including the private key (only once)
+
+### Wallet Balance Checking
+
+The system uses `SolanaBalanceService` to query real-time balances from Solana devnet:
+
+```typescript
+const balance = await SolanaBalanceService.getBalance(publicKey);
+// Returns: { balanceSol, balanceLamports, error }
+```
+
+## Security Best Practices
+
+<AccordionGroup>
+  <Accordion title="Private Key Storage">
+    - Private keys are base64-encoded and stored in the database
+    - They're only returned once during agent creation
+    - Store private keys securely in your application (e.g., environment variables, secrets manager)
+    - Never commit private keys to version control
+  </Accordion>
+  
+  <Accordion title="Devnet vs Mainnet">
+    - ActumX uses Solana **devnet** by default
+    - Devnet SOL has no real value
+    - Before moving to mainnet, audit your security practices
+    - Update `SOLANA_RPC_URL` in `.env` to switch networks
+  </Accordion>
+  
+  <Accordion title="Access Control">
+    - Agents are scoped to user accounts
+    - Users can only access their own agents
+    - Authentication is verified on every API request
+  </Accordion>
+</AccordionGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Airdrop Failed">
+    **Error:** "failed to fund agent on devnet"
+    
+    **Solutions:**
+    - Solana devnet faucet may be rate-limited
+    - Try again after a few minutes
+    - Request smaller amounts (0.5 SOL instead of 1 SOL)
+    - Check Solana devnet status
+  </Accordion>
+  
+  <Accordion title="Agent Not Found">
+    **Error:** "agent not found"
+    
+    **Solutions:**
+    - Verify you're using the correct agent ID
+    - Ensure you're authenticated as the agent's owner
+    - Check that the agent was successfully created
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Create API Keys" icon="key" href="/guides/managing-api-keys">
+    Generate API keys to authenticate your agent's requests
+  </Card>
+  
+  <Card title="Top Up Credits" icon="credit-card" href="/guides/billing-credits">
+    Add credits to your account for using paid endpoints
+  </Card>
+</CardGroup>

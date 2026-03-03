@@ -1,0 +1,126 @@
+---
+title: "Authentication"
+description: "Learn how to authenticate with the ActumX API using session cookies or API keys"
+---
+
+## Authentication Methods
+
+ActumX supports two authentication methods depending on the use case:
+
+1. **Session-based authentication** - For dashboard UI requests
+2. **API key authentication** - For programmatic API access
+
+## Session-Based Authentication
+
+The dashboard uses [better-auth](https://better-auth.com) for session management with email and password authentication.
+
+### Session Details
+
+- Sessions are managed via secure HTTP-only cookies
+- Session TTL: 30 days
+- Base path: `/auth/api`
+- Cross-subdomain cookies enabled in production (`.actumx.app`)
+
+### Login
+
+Login is handled through the better-auth endpoints at `/auth/api`. Sessions are automatically maintained via cookies.
+
+```bash
+curl -X POST https://api.actumx.app/auth/api/sign-in \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "user@example.com",
+    "password": "your-password"
+  }'
+```
+
+## API Key Authentication
+
+API keys are used for programmatic access to the ActumX API. They can be created through the dashboard.
+
+### Using API Keys
+
+API keys can be passed in two ways:
+
+#### Option 1: Using the `x-api-key` header (Recommended)
+
+```bash
+curl https://api.actumx.app/v1/agents \
+  -H "x-api-key: actumx_live_abc123..."
+```
+
+#### Option 2: Using the `Authorization` header with Bearer token
+
+```bash
+curl https://api.actumx.app/v1/agents \
+  -H "Authorization: Bearer actumx_live_abc123..."
+```
+
+### API Key Format
+
+API keys follow this format:
+
+```
+actumx_live_[random_string]
+```
+
+The first 14 characters serve as the key prefix for identification in the dashboard.
+
+### Security Best Practices
+
+<Warning>
+  API keys provide full access to your account. Keep them secure and never commit them to version control.
+</Warning>
+
+- Store API keys in environment variables
+- Use separate API keys for different applications
+- Rotate keys regularly
+- Revoke unused keys immediately
+- The full API key is only shown once at creation
+
+## x402 Payment Headers
+
+For endpoints that require payment (HTTP 402), you'll need to include additional headers after settlement:
+
+- `x-payment-id` - The payment ID from the 402 response
+- `x-payment-proof` - The receipt ID returned from the settlement endpoint
+
+See the [x402 endpoints documentation](/api/x402) for detailed payment flow.
+
+### Example with Payment Headers
+
+```bash
+curl https://api.actumx.app/v1/protected/quote \
+  -H "x-api-key: actumx_live_abc123..." \
+  -H "x-payment-id: x402tx_xyz789" \
+  -H "x-payment-proof: receipt_def456"
+```
+
+## Protected Endpoints
+
+Most endpoints require authentication. Unauthenticated requests will receive a 401 status:
+
+```json
+{
+  "error": "unauthorized"
+}
+```
+
+Or for API key-protected endpoints:
+
+```json
+{
+  "error": "missing_or_invalid_api_key"
+}
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Create API Keys" icon="key" href="/guides/managing-api-keys">
+    Learn how to create and manage API keys
+  </Card>
+  <Card title="API Keys Endpoint" icon="code" href="/api/api-keys">
+    API reference for managing keys programmatically
+  </Card>
+</CardGroup>

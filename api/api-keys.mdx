@@ -1,0 +1,250 @@
+---
+title: "API Keys"
+description: "Manage API keys for programmatic access to ActumX"
+---
+
+## Overview
+
+API keys enable programmatic access to the ActumX API. Each key is associated with a user account and can be revoked at any time.
+
+## List API Keys
+
+Retrieve all API keys for the authenticated user.
+
+<CodeGroup>
+```bash cURL
+curl https://api.actumx.app/v1/api-keys \
+  -H "Cookie: your_session_cookie"
+```
+
+```javascript JavaScript
+const response = await fetch('https://api.actumx.app/v1/api-keys', {
+  credentials: 'include'
+});
+const data = await response.json();
+```
+</CodeGroup>
+
+<Note>
+  This endpoint requires session authentication (dashboard login), not API key authentication.
+</Note>
+
+### Response
+
+<ResponseField name="keys" type="array">
+  List of API key objects
+  
+  <Expandable title="API Key object">
+    <ResponseField name="id" type="string">
+      Unique key identifier with `key_` prefix
+    </ResponseField>
+    
+    <ResponseField name="name" type="string">
+      Display name for the API key
+    </ResponseField>
+    
+    <ResponseField name="keyPrefix" type="string">
+      First 14 characters of the key for identification
+    </ResponseField>
+    
+    <ResponseField name="revokedAt" type="string | null">
+      ISO 8601 timestamp if revoked, null if active
+    </ResponseField>
+    
+    <ResponseField name="lastUsedAt" type="string | null">
+      ISO 8601 timestamp of last usage
+    </ResponseField>
+    
+    <ResponseField name="createdAt" type="string">
+      ISO 8601 timestamp of creation
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseExample>
+```json
+{
+  "keys": [
+    {
+      "id": "key_abc123",
+      "name": "Production API Key",
+      "keyPrefix": "actumx_live_x",
+      "revokedAt": null,
+      "lastUsedAt": "2024-03-01T10:00:00Z",
+      "createdAt": "2024-02-15T08:30:00Z"
+    },
+    {
+      "id": "key_def456",
+      "name": "Development Key",
+      "keyPrefix": "actumx_live_y",
+      "revokedAt": "2024-03-01T12:00:00Z",
+      "lastUsedAt": "2024-02-28T15:45:00Z",
+      "createdAt": "2024-02-10T10:00:00Z"
+    }
+  ]
+}
+```
+</ResponseExample>
+
+---
+
+## Create API Key
+
+Generate a new API key for programmatic access.
+
+<CodeGroup>
+```bash cURL
+curl -X POST https://api.actumx.app/v1/api-keys \
+  -H "Cookie: your_session_cookie" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Production API Key"
+  }'
+```
+
+```javascript JavaScript
+const response = await fetch('https://api.actumx.app/v1/api-keys', {
+  method: 'POST',
+  credentials: 'include',
+  headers: {
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    name: 'Production API Key'
+  })
+});
+const data = await response.json();
+```
+</CodeGroup>
+
+<Note>
+  This endpoint requires session authentication (dashboard login).
+</Note>
+
+### Request Body
+
+<ParamField path="name" type="string" required>
+  Display name for the API key
+  
+  - Minimum length: 2 characters
+  - Maximum length: 80 characters
+</ParamField>
+
+### Response
+
+<ResponseField name="apiKeyId" type="string">
+  Unique identifier for the created key
+</ResponseField>
+
+<ResponseField name="apiKey" type="string">
+  The full API key value
+  
+  <Warning>
+    This is only shown once. Store it securely immediately.
+  </Warning>
+</ResponseField>
+
+<ResponseField name="keyPrefix" type="string">
+  First 14 characters for identification
+</ResponseField>
+
+<ResponseField name="warning" type="string">
+  Security warning about storing the key
+</ResponseField>
+
+<ResponseExample>
+```json
+{
+  "apiKeyId": "key_abc123",
+  "apiKey": "actumx_live_xY9zK3mN7pQ2vB...",
+  "keyPrefix": "actumx_live_x",
+  "warning": "Store this key now. It is shown only once."
+}
+```
+</ResponseExample>
+
+<Warning>
+  Save the `apiKey` value immediately. It cannot be retrieved again. If lost, you'll need to create a new key.
+</Warning>
+
+---
+
+## Revoke API Key
+
+Revoke an API key to prevent further use. Revoked keys cannot be reactivated.
+
+<CodeGroup>
+```bash cURL
+curl -X DELETE https://api.actumx.app/v1/api-keys/key_abc123 \
+  -H "Cookie: your_session_cookie"
+```
+
+```javascript JavaScript
+const response = await fetch('https://api.actumx.app/v1/api-keys/key_abc123', {
+  method: 'DELETE',
+  credentials: 'include'
+});
+const data = await response.json();
+```
+</CodeGroup>
+
+<Note>
+  This endpoint requires session authentication (dashboard login).
+</Note>
+
+### Path Parameters
+
+<ParamField path="id" type="string" required>
+  The ID of the API key to revoke
+</ParamField>
+
+### Response
+
+<ResponseField name="success" type="boolean">
+  Whether the revocation was successful
+</ResponseField>
+
+<ResponseExample>
+```json
+{
+  "success": true
+}
+```
+</ResponseExample>
+
+<Info>
+  Revoking a key sets its `revokedAt` timestamp. The key becomes immediately unusable for API requests.
+</Info>
+
+## Key Format and Security
+
+### Key Structure
+
+API keys follow this format:
+
+```
+actumx_live_[40_character_random_string]
+```
+
+The first 14 characters (`actumx_live_x`) serve as the prefix for easy identification.
+
+### Storage
+
+- Keys are stored as SHA-256 hashes in the database
+- Only the hash and prefix are retained after creation
+- The full key is only displayed once at creation
+
+### Last Usage Tracking
+
+The `lastUsedAt` field is updated whenever an API key successfully authenticates a request. This helps you identify unused keys.
+
+## Error Codes
+
+| Status | Error | Description |
+|--------|-------|-------------|
+| 401 | `unauthorized` | Not logged in or session expired |
+| 200 | `success: true` | Revocation succeeded (even if key doesn't exist) |
+
+<Note>
+  Revoking a non-existent or already-revoked key returns success to prevent information disclosure.
+</Note>

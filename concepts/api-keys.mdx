@@ -1,0 +1,499 @@
+---
+title: "API Keys"
+description: "Learn about API key management, security, and authentication"
+---
+
+## What are API Keys?
+
+API keys are authentication credentials that grant programmatic access to the ActumX API. Each key:
+
+- Uniquely identifies your requests
+- Is associated with your user account
+- Can be named for easy identification
+- Can be revoked at any time
+- Tracks usage via `lastUsedAt` timestamp
+
+<Info>
+API keys use bearer token authentication via the `Authorization` header.
+</Info>
+
+## API Key Structure
+
+An API key has the following properties:
+
+```typescript
+interface ApiKey {
+  id: string;           // Unique key ID (prefixed with "key_")
+  userId: string;       // Your user ID
+  name: string;         // Human-readable name (2-80 characters)
+  keyPrefix: string;    // First 14 chars of the key (for identification)
+  keyHash: string;      // Hashed key (for secure storage)
+  revokedAt: string | null;  // Revocation timestamp (null if active)
+  lastUsedAt: string | null; // Last usage timestamp
+  createdAt: string;    // ISO 8601 creation timestamp
+}
+```
+
+### Database Schema
+
+API keys are stored in the `api_keys` table:
+
+```sql
+CREATE TABLE api_keys (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  key_prefix TEXT NOT NULL,
+  key_hash TEXT NOT NULL UNIQUE,
+  revoked_at TEXT,
+  last_used_at TEXT,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX idx_api_keys_user_id ON api_keys(user_id);
+```
+
+**Source Reference**: `/home/daytona/workspace/source/api/src/db/schema.ts:5-16`
+
+## How API Keys Work
+
+### Key Generation
+
+When you create an API key:
+
+1. A cryptographically secure random key is generated
+2. The first 14 characters are stored as `keyPrefix` for identification
+3. The full key is hashed using SHA-256 and stored as `keyHash`
+4. The raw key is returned **only once**
+
+```typescript
+import { hashSecret, newApiKey } from "../../lib/crypto";
+
+// Generate new API key (source: service.ts:39-42)
+const rawKey = newApiKey();
+const keyPrefix = rawKey.slice(0, 14);
+const keyHash = hashSecret(rawKey);
+```
+
+<Warning>
+The raw API key is shown **only once** during creation. Store it securely - ActumX cannot recover lost keys.
+</Warning>
+
+### Key Format
+
+API keys follow this format:
+
+```
+actumx_1234567890abcdefghijklmnopqrstuvwxyz
+^^^^^^ ^^^^^^^^^
+ prefix  random
+```
+
+- **Prefix**: `actumx_` + 14 random characters (stored for display)
+- **Full Length**: Approximately 40-50 characters
+- **Encoding**: Alphanumeric characters
+
+### Authentication Flow
+
+1. **Client Request**: Include API key in the `Authorization` header
+
+```bash
+curl https://api.actumx.com/api/v1/agents \
+  -H "Authorization: Bearer actumx_abc123xyz..."
+```
+
+2. **Server Validation**: ActumX hashes the provided key and looks up the hash
+
+```typescript
+// Validate API key (conceptual)
+const providedHash = hashSecret(providedKey);
+const apiKey = await db.query.apiKeys.findFirst({
+  where: eq(apiKeys.keyHash, providedHash)
+});
+
+if (!apiKey || apiKey.revokedAt) {
+  return 401; // Unauthorized
+}
+```
+
+3. **Request Processing**: If valid and not revoked, the request proceeds
+
+4. **Usage Tracking**: The `lastUsedAt` timestamp is updated
+
+```typescript
+// Update last used timestamp (source: x402/service.ts:425-427)
+await db
+  .update(apiKeys)
+  .set({ lastUsedAt: timestamp })
+  .where(eq(apiKeys.id, apiKey.id));
+```
+
+## API Key Lifecycle
+
+### 1. Creation
+
+Create an API key via the API or dashboard:
+
+```bash
+curl -X POST https://api.actumx.com/api/v1/api-keys \
+  -H "Cookie: your_session_cookie" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Production Key"
+  }'
+```
+
+**Response:**
+
+```json
+{
+  "apiKeyId": "key_abc123",
+  "apiKey": "actumx_full_key_here",
+  "keyPrefix": "actumx_abc123",
+  "warning": "Store this key now. It is shown only once."
+}
+```
+
+<Note>
+API key creation requires authentication via session cookie (web dashboard) or existing API key.
+</Note>
+
+### 2. Usage
+
+Use your API key to authenticate all requests:
+
+```bash
+# List agents
+curl https://api.actumx.com/api/v1/agents \
+  -H "Authorization: Bearer actumx_your_key"
+
+# Create x402 transaction
+curl https://api.actumx.com/api/v1/x402/quote \
+  -H "Authorization: Bearer actumx_your_key"
+
+# Top up credits
+curl -X POST https://api.actumx.com/api/v1/billing/top-up \
+  -H "Cookie: your_session" \
+  -d '{"amountCents": 1000}'
+```
+
+### 3. Monitoring
+
+List all your API keys to monitor usage:
+
+```bash
+curl https://api.actumx.com/api/v1/api-keys \
+  -H "Cookie: your_session_cookie"
+```
+
+**Response:**
+
+```json
+{
+  "keys": [
+    {
+      "id": "key_abc123",
+      "name": "Production Key",
+      "keyPrefix": "actumx_abc123",
+      "revokedAt": null,
+      "lastUsedAt": "2026-03-03T22:30:00Z",
+      "createdAt": "2026-03-01T10:00:00Z"
+    },
+    {
+      "id": "key_xyz789",
+      "name": "Staging Key",
+      "keyPrefix": "actumx_xyz789",
+      "revokedAt": "2026-03-02T15:00:00Z",
+      "lastUsedAt": "2026-03-02T14:30:00Z",
+      "createdAt": "2026-02-15T09:00:00Z"
+    }
+  ]
+}
+```
+
+### 4. Revocation
+
+Revoke a key if it's compromised or no longer needed:
+
+```bash
+curl -X POST https://api.actumx.com/api/v1/api-keys/key_abc123/revoke \
+  -H "Cookie: your_session_cookie"
+```
+
+**Response:**
+
+```json
+{
+  "success": true
+}
+```
+
+Revoked keys:
+
+- Cannot authenticate new requests
+- Remain visible in your key list (with `revokedAt` timestamp)
+- Cannot be un-revoked (create a new key instead)
+
+<Warning>
+Revoking a key immediately invalidates it. Any applications using that key will lose access.
+</Warning>
+
+## Security Best Practices
+
+### Key Storage
+
+**DO:**
+
+- Store keys in environment variables
+- Use secret management services (AWS Secrets Manager, HashiCorp Vault)
+- Encrypt keys at rest in your application
+
+**DON'T:**
+
+- Commit keys to version control
+- Hardcode keys in source code
+- Share keys via email or chat
+- Log keys in application logs
+
+### Key Rotation
+
+1. Create a new API key
+2. Update your application to use the new key
+3. Verify the new key works
+4. Revoke the old key
+
+```bash
+# Step 1: Create new key
+curl -X POST https://api.actumx.com/api/v1/api-keys \
+  -d '{"name": "Production Key v2"}'
+
+# Step 2: Update app environment
+export ACTUMX_API_KEY="actumx_new_key"
+
+# Step 3: Test
+curl https://api.actumx.com/api/v1/agents \
+  -H "Authorization: Bearer $ACTUMX_API_KEY"
+
+# Step 4: Revoke old key
+curl -X POST https://api.actumx.com/api/v1/api-keys/key_old/revoke
+```
+
+<Note>
+Rotate API keys every 90 days or immediately if compromised.
+</Note>
+
+### Key Naming
+
+Use descriptive names to track key usage:
+
+- `Production Server`
+- `Staging Environment`
+- `CI/CD Pipeline`
+- `Local Development - John`
+- `Mobile App - iOS`
+
+This helps you identify which key to revoke if issues arise.
+
+### Least Privilege
+
+Create separate keys for different environments:
+
+```bash
+# Production key (limited scope)
+curl -X POST https://api.actumx.com/api/v1/api-keys \
+  -d '{"name": "Production - Read Only"}'
+
+# Development key (full access)
+curl -X POST https://api.actumx.com/api/v1/api-keys \
+  -d '{"name": "Development - Full Access"}'
+```
+
+<Info>
+ActumX currently doesn't support key-level permissions, but using separate keys per environment aids in tracking and revocation.
+</Info>
+
+## Implementation Details
+
+### Service Layer
+
+The API key service handles all key operations:
+
+**Key Functions:**
+
+- `list(request)`: Retrieve all API keys for authenticated user
+- `create(request, payload)`: Generate new API key
+- `revoke(request, id)`: Revoke an existing key
+
+**Source Reference**: `/home/daytona/workspace/source/api/src/modules/api-keys/service.ts`
+
+### Validation
+
+Key creation validates the name:
+
+```typescript
+// Model validation (source: model.ts:4-6)
+const createApiKeyBody = t.Object({
+  name: t.String({ minLength: 2, maxLength: 80 }),
+});
+```
+
+### Cryptographic Functions
+
+ActumX uses custom crypto utilities:
+
+```typescript
+// Generate random API key
+export function newApiKey(): string {
+  // Returns cryptographically secure random string
+  // Format: "actumx_" + random characters
+}
+
+// Hash key for storage
+export function hashSecret(secret: string): string {
+  // Returns SHA-256 hash of the key
+}
+```
+
+**Source Reference**: `/home/daytona/workspace/source/api/src/lib/crypto.ts`
+
+### Context Service
+
+The `ApiKeyContextService` extracts and validates keys from requests:
+
+```typescript
+// Get authenticated API key from request
+const apiKey = await ApiKeyContextService.getAuthenticatedApiKey(request);
+
+if (!apiKey) {
+  return { statusCode: 401, body: { error: "missing_or_invalid_api_key" } };
+}
+```
+
+**Source Reference**: `/home/daytona/workspace/source/api/src/services/api-key-context.service.ts`
+
+## Usage Tracking
+
+API keys track two timestamps:
+
+1. **createdAt**: When the key was created (never changes)
+2. **lastUsedAt**: Most recent API request using this key
+
+```typescript
+// Track usage (source: x402/service.ts:425-427)
+await db
+  .update(apiKeys)
+  .set({ lastUsedAt: timestamp })
+  .where(eq(apiKeys.id, apiKey.id));
+```
+
+This helps you:
+
+- Identify unused keys (revoke them)
+- Detect unexpected usage patterns
+- Audit key activity
+
+## Error Handling
+
+Common API key errors:
+
+| Error | HTTP Status | Cause | Solution |
+|-------|-------------|-------|----------|
+| `unauthorized` | 401 | Missing/invalid key | Provide valid API key in Authorization header |
+| `missing_or_invalid_api_key` | 401 | Key not found or revoked | Check key prefix and revocation status |
+| Name validation error | 400 | Invalid name length | Use 2-80 characters |
+
+### Example Error Response
+
+```json
+{
+  "error": "unauthorized"
+}
+```
+
+## Integration Examples
+
+### Node.js
+
+```javascript
+const axios = require('axios');
+
+const actumx = axios.create({
+  baseURL: 'https://api.actumx.com/api/v1',
+  headers: {
+    'Authorization': `Bearer ${process.env.ACTUMX_API_KEY}`
+  }
+});
+
+// List agents
+const { data } = await actumx.get('/agents');
+console.log(data.agents);
+```
+
+### Python
+
+```python
+import os
+import requests
+
+class ActumXClient:
+    def __init__(self):
+        self.api_key = os.environ['ACTUMX_API_KEY']
+        self.base_url = 'https://api.actumx.com/api/v1'
+        self.headers = {'Authorization': f'Bearer {self.api_key}'}
+    
+    def list_agents(self):
+        response = requests.get(
+            f'{self.base_url}/agents',
+            headers=self.headers
+        )
+        return response.json()['agents']
+
+client = ActumXClient()
+agents = client.list_agents()
+```
+
+### cURL
+
+```bash
+#!/bin/bash
+API_KEY="actumx_your_key_here"
+BASE_URL="https://api.actumx.com/api/v1"
+
+# List agents
+curl "$BASE_URL/agents" \
+  -H "Authorization: Bearer $API_KEY"
+
+# Create agent
+curl -X POST "$BASE_URL/agents" \
+  -H "Authorization: Bearer $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "My Agent"}'
+```
+
+## Best Practices Summary
+
+1. **Never commit keys to version control**
+2. **Use environment variables for key storage**
+3. **Name keys descriptively** (e.g., "Production API", "Staging Bot")
+4. **Rotate keys every 90 days**
+5. **Revoke compromised keys immediately**
+6. **Create separate keys per environment**
+7. **Monitor `lastUsedAt` to identify unused keys**
+8. **Store keys in secret management systems**
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Managing API Keys" icon="key" href="/guides/managing-api-keys">
+    Step-by-step guide to creating and managing keys
+  </Card>
+  <Card title="Dashboard - API Keys" icon="shield" href="/dashboard/api-keys">
+    Manage keys in the web dashboard
+  </Card>
+  <Card title="API Reference" icon="code" href="/api/api-keys">
+    View detailed API key endpoints
+  </Card>
+  <Card title="Authentication" icon="lock" href="/api/authentication">
+    Learn about ActumX authentication methods
+  </Card>
+</CardGroup>

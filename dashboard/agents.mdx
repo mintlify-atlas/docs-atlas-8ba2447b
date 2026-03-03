@@ -1,0 +1,199 @@
+---
+title: Agents Dashboard
+description: Create and manage AI agent wallets
+---
+
+The Agents page allows you to create, view, and manage Solana wallets for your AI agents. Each agent gets its own wallet that can make autonomous payments and transactions.
+
+## Viewing Agents
+
+The Agents page displays all your agent wallets in a grid layout. Each agent card shows:
+
+- **Agent Avatar** - First letter of the agent name
+- **Agent Name** - The name you assigned
+- **Created Time** - How long ago the agent was created (e.g., "2h ago")
+- **SOL Balance** - Current Solana balance displayed in large text
+- **Description** - Optional description if provided during creation
+
+The page header displays the total number of agent wallets you've created.
+
+## Creating a New Agent
+
+### Step 1: Open Creation Dialog
+
+1. Click the "Create Agent" button in the top-right corner
+2. The creation dialog will open
+
+<Note>
+If this is your first agent, the creation dialog opens automatically.
+</Note>
+
+### Step 2: Configure Agent Details
+
+**Agent Name** (Required)
+- Enter a descriptive name for your agent
+- Examples: "Claude", "Research Bot", "Trading Agent", "My First Agent"
+- This name helps you identify the agent in the dashboard
+
+**Description** (Optional)
+- Add notes about what this agent will do
+- Stored locally in your browser
+- Helps track agent purposes across multiple wallets
+
+### Step 3: Create the Agent
+
+1. Click the "Create Agent" button
+2. The system generates a new Solana wallet
+3. Public and private keys are created
+
+<Warning>
+The private key is shown ONLY ONCE immediately after creation. Copy and store it securely before closing the dialog.
+</Warning>
+
+### What Happens on Creation
+
+When you create an agent:
+
+- A new Solana keypair is generated on devnet
+- The agent is registered with ActumX
+- Public key is stored for balance tracking
+- Private key is returned to you (shown once)
+- Agent appears in your agents list with 0.00 SOL balance
+
+## Agent Details View
+
+Click any agent card to view detailed information:
+
+### Agent Information
+
+- **Agent Name** - Displayed with avatar
+- **Public Key** - Full Solana public address
+- **SOL Balance** - Current balance with SOL denomination
+
+### Key Information Card
+
+The details page displays:
+
+```
+Public key
+[Full Solana public key address]
+
+Balance
+0.00 SOL
+```
+
+You can copy the public key to share with others or use in your agent configuration.
+
+## Funding Devnet Wallets
+
+To add funds to your agent wallets for testing:
+
+### From the Dashboard Page
+
+1. Navigate to the Dashboard page
+2. Click "Fund Agent" button
+3. Select the agent from the dropdown
+4. Enter the amount in SOL (0.01 - 2.0)
+5. Click "Fund from Devnet"
+
+### Funding Process
+
+1. **Select Agent** - Choose which agent wallet to fund
+2. **View Public Key** - The agent's Solana public key is displayed
+3. **Copy Address** - Click the copy icon to copy the public key
+4. **Specify Amount** - Enter SOL amount (minimum 0.01, maximum 2.0)
+5. **Request Funding** - Click "Fund from Devnet" to request from Solana faucet
+6. **Confirmation** - Success message appears with transaction signature
+7. **Explorer Link** - View transaction on Solana Explorer (devnet)
+
+<Warning>
+**Only send on supported networks**
+
+Use Solana Devnet faucet funding for testing only. Do not send mainnet funds to test addresses.
+</Warning>
+
+### After Funding
+
+- Balance updates automatically (may take a few seconds)
+- Transaction appears on Solana Explorer
+- Agent wallet is ready to make payments via x402 protocol
+
+## Using Agents
+
+Once created, agents can be accessed via:
+
+### MCP (Model Context Protocol)
+
+Configure your agent framework to use the ActumX MCP server with the agent's credentials.
+
+### Direct SDK Integration
+
+Use the agent's private key in your application code with the ActumX SDK.
+
+### Agent Tooling
+
+Integrate with AI frameworks like LangChain, AutoGPT, or custom agent implementations.
+
+## Agent Wallet Management
+
+### Balance Monitoring
+
+- View real-time balances on the Agents page
+- Check individual agent details for public key
+- Monitor total balance across all agents on Dashboard
+
+### Security Best Practices
+
+<Tip>
+**Store Private Keys Securely**
+
+- Save private keys immediately after creation
+- Use environment variables or secure key management
+- Never commit private keys to version control
+- Rotate keys if compromised
+</Tip>
+
+### Multiple Agents
+
+You can create multiple agent wallets for different purposes:
+
+- **Development** - Test agent for development work
+- **Staging** - Pre-production testing agent
+- **Production** - Live agent for production use
+- **Specialized Agents** - Different agents for different tasks
+
+## Agent States
+
+Each agent has:
+
+- **Created At** - Timestamp of wallet creation
+- **Balance** - Current SOL balance
+- **Public Key** - Solana address for receiving funds
+- **Status** - Active (all agents are active once created)
+
+## Troubleshooting
+
+### Agent Not Appearing
+
+- Refresh the page
+- Check for error messages during creation
+- Verify your session is active
+
+### Balance Not Updating
+
+- Wait 5-10 seconds for blockchain confirmation
+- Refresh the page
+- Check Solana Explorer for transaction status
+
+### Lost Private Key
+
+- Private keys cannot be recovered
+- Create a new agent wallet
+- Transfer any remaining funds if you have the old key
+
+## Next Steps
+
+- [Understand x402 protocol](/concepts/x402-protocol)
+- [Monitor agent transactions](/dashboard/transactions)
+- [View API reference](/api/agents)
+- [Learn about MCP integration](/api/x402)

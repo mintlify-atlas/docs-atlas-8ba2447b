@@ -1,0 +1,352 @@
+---
+title: 'Managing API Keys'
+description: 'Create, use, and revoke API keys for authenticating requests'
+icon: 'key'
+---
+
+## What are API Keys?
+
+API keys in ActumX are used to authenticate requests to protected endpoints, including:
+- x402 paid endpoints
+- MCP (Model Context Protocol) tools
+- Protected resources and agent operations
+
+Each API key is scoped to your user account and can be revoked independently.
+
+## API Key Format
+
+ActumX API keys follow this format:
+```
+xk_live_[48 hexadecimal characters]
+```
+
+Example: `xk_live_a1b2c3d4e5f6...`
+
+<Info>
+  The key generation uses cryptographically secure random bytes. See `api/src/lib/crypto.ts:15-17`.
+</Info>
+
+## Creating API Keys
+
+<Steps>
+  <Step title="Create a New API Key">
+    Make a POST request to generate a new API key:
+    
+    <CodeGroup>
+    ```bash cURL
+    curl -X POST http://localhost:3001/v1/api-keys \
+      -H "Content-Type: application/json" \
+      -H "Cookie: YOUR_SESSION_COOKIE" \
+      -d '{
+        "name": "Production Agent Key"
+      }'
+    ```
+    
+    ```javascript JavaScript
+    const response = await fetch('http://localhost:3001/v1/api-keys', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+      body: JSON.stringify({
+        name: 'Production Agent Key'
+      })
+    });
+    
+    const result = await response.json();
+    console.log(result);
+    ```
+    
+    ```python Python
+    import requests
+    
+    response = requests.post(
+        'http://localhost:3001/v1/api-keys',
+        json={'name': 'Production Agent Key'},
+        cookies={'session': 'YOUR_SESSION_COOKIE'}
+    )
+    
+    result = response.json()
+    print(result)
+    ```
+    </CodeGroup>
+    
+    **Response:**
+    ```json
+    {
+      "apiKeyId": "key_x1y2z3a4b5c6",
+      "apiKey": "xk_live_a1b2c3d4e5f6789...",
+      "keyPrefix": "xk_live_a1b2c3",
+      "warning": "Store this key now. It is shown only once."
+    }
+    ```
+    
+    <Warning>
+      **Critical:** Save the `apiKey` value immediately! It cannot be retrieved after creation.
+    </Warning>
+  </Step>
+
+  <Step title="Store the API Key Securely">
+    Store your API key in a secure location:
+    
+    **Environment Variable:**
+    ```bash
+    export ACTUMX_API_KEY="xk_live_a1b2c3d4e5f6789..."
+    ```
+    
+    **Configuration File (.env):**
+    ```bash .env
+    ACTUMX_API_KEY=xk_live_a1b2c3d4e5f6789...
+    ```
+    
+    <Warning>
+      Never commit API keys to version control. Add `.env` to your `.gitignore`.
+    </Warning>
+  </Step>
+</Steps>
+
+## Using API Keys
+
+### Bearer Token Authentication
+
+Include your API key in the `Authorization` header:
+
+<CodeGroup>
+```bash cURL
+curl http://localhost:3001/v1/protected/quote \
+  -H "Authorization: Bearer xk_live_a1b2c3d4e5f6789..."
+```
+
+```javascript JavaScript
+const response = await fetch('http://localhost:3001/v1/protected/quote', {
+  headers: {
+    'Authorization': `Bearer ${process.env.ACTUMX_API_KEY}`
+  }
+});
+
+const data = await response.json();
+console.log(data);
+```
+
+```python Python
+import os
+import requests
+
+headers = {
+    'Authorization': f'Bearer {os.getenv("ACTUMX_API_KEY")}'
+}
+
+response = requests.get(
+    'http://localhost:3001/v1/protected/quote',
+    headers=headers
+)
+
+data = response.json()
+print(data)
+```
+</CodeGroup>
+
+### MCP Tool Authentication
+
+For MCP (Model Context Protocol) endpoints, use the same Bearer token:
+
+<CodeGroup>
+```bash cURL
+curl -X POST http://localhost:3001/mcp \
+  -H "Authorization: Bearer xk_live_a1b2c3d4e5f6789..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/list"
+  }'
+```
+
+```javascript JavaScript
+const response = await fetch('http://localhost:3001/mcp', {
+  method: 'POST',
+  headers: {
+    'Authorization': `Bearer ${process.env.ACTUMX_API_KEY}`,
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    jsonrpc: '2.0',
+    id: 1,
+    method: 'tools/list'
+  })
+});
+
+const result = await response.json();
+console.log(result);
+```
+</CodeGroup>
+
+## Listing API Keys
+
+View all your API keys (active and revoked):
+
+```bash
+curl http://localhost:3001/v1/api-keys \
+  -H "Cookie: YOUR_SESSION_COOKIE"
+```
+
+**Response:**
+```json
+{
+  "keys": [
+    {
+      "id": "key_x1y2z3a4b5c6",
+      "name": "Production Agent Key",
+      "keyPrefix": "xk_live_a1b2c3",
+      "revokedAt": null,
+      "lastUsedAt": "2026-03-03T23:45:00.000Z",
+      "createdAt": "2026-03-03T22:30:00.000Z"
+    },
+    {
+      "id": "key_abc123def456",
+      "name": "Old Development Key",
+      "keyPrefix": "xk_live_def456",
+      "revokedAt": "2026-03-02T10:00:00.000Z",
+      "lastUsedAt": "2026-03-01T15:30:00.000Z",
+      "createdAt": "2026-02-15T09:00:00.000Z"
+    }
+  ]
+}
+```
+
+<Note>
+  Only the key prefix is shown in the list. The full key is never retrievable after creation.
+</Note>
+
+## Revoking API Keys
+
+Revoke a key to immediately prevent it from authenticating requests:
+
+<CodeGroup>
+```bash cURL
+curl -X DELETE http://localhost:3001/v1/api-keys/key_x1y2z3a4b5c6 \
+  -H "Cookie: YOUR_SESSION_COOKIE"
+```
+
+```javascript JavaScript
+const response = await fetch(
+  'http://localhost:3001/v1/api-keys/key_x1y2z3a4b5c6',
+  {
+    method: 'DELETE',
+    credentials: 'include'
+  }
+);
+
+const result = await response.json();
+console.log(result); // { "success": true }
+```
+
+```python Python
+response = requests.delete(
+    'http://localhost:3001/v1/api-keys/key_x1y2z3a4b5c6',
+    cookies={'session': 'YOUR_SESSION_COOKIE'}
+)
+
+result = response.json()
+print(result)  # {"success": True}
+```
+</CodeGroup>
+
+<Warning>
+  Revocation is immediate. Any requests using the revoked key will fail with a 401 error.
+</Warning>
+
+## Key Implementation Details
+
+### How API Keys are Stored
+
+From `api/src/modules/api-keys/service.ts:39-53`:
+
+1. Generate a random API key using `newApiKey()`
+2. Extract the first 14 characters as the `keyPrefix` (for display)
+3. Hash the full key using SHA-256
+4. Store only the hash in the database (never the plain key)
+5. Return the plain key to the user (only once)
+
+```typescript
+const rawKey = newApiKey();
+const keyPrefix = rawKey.slice(0, 14);
+const keyHash = hashSecret(rawKey);
+```
+
+### Authentication Flow
+
+When you make an authenticated request:
+
+1. Extract the API key from the `Authorization` header
+2. Hash the provided key
+3. Look up the key by its hash in the database
+4. Verify it's not revoked (`revokedAt` is `null`)
+5. Update `lastUsedAt` timestamp
+6. Proceed with the request
+
+## Security Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Rotate Keys Regularly" icon="rotate">
+    Create new keys and revoke old ones periodically to minimize exposure
+  </Card>
+  
+  <Card title="Use Descriptive Names" icon="tag">
+    Name keys by purpose (e.g., "Production API", "CI/CD Pipeline") for easy identification
+  </Card>
+  
+  <Card title="Revoke Unused Keys" icon="ban">
+    Immediately revoke keys that are no longer needed or may be compromised
+  </Card>
+  
+  <Card title="Monitor Usage" icon="chart-line">
+    Check `lastUsedAt` timestamps to identify inactive or suspicious keys
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="401 Unauthorized Error">
+    **Possible Causes:**
+    - API key is missing from the request
+    - API key format is incorrect
+    - API key has been revoked
+    - API key was never created successfully
+    
+    **Solutions:**
+    - Verify the `Authorization` header format: `Bearer xk_live_...`
+    - List your API keys to check if the key exists and is not revoked
+    - Create a new API key if needed
+  </Accordion>
+  
+  <Accordion title="Key Not Working After Creation">
+    **Check:**
+    - Ensure you copied the entire key (including `xk_live_` prefix)
+    - Verify there are no extra spaces or line breaks
+    - Confirm you're using the latest key (not an old one)
+  </Accordion>
+  
+  <Accordion title="Cannot Retrieve Lost Key">
+    API keys cannot be retrieved after creation for security reasons.
+    
+    **Solution:**
+    1. Revoke the lost key
+    2. Create a new key
+    3. Update your application configuration
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Top Up Credits" icon="credit-card" href="/guides/billing-credits">
+    Add credits to your account for using paid endpoints
+  </Card>
+  
+  <Card title="Make Paid Requests" icon="dollar-sign" href="/guides/making-paid-requests">
+    Learn how to use x402 payment protocol
+  </Card>
+</CardGroup>

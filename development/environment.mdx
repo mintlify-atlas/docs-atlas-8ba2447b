@@ -1,0 +1,135 @@
+---
+title: Environment Setup
+description: Set up your development environment for ActumX
+---
+
+## Overview
+
+ActumX is a monorepo containing two main projects:
+
+- **API** - Backend built with Elysia, Bun, Drizzle ORM, and PostgreSQL
+- **Dashboard** - Frontend built with Next.js App Router and shadcn/ui
+
+## Required Tools
+
+### Bun
+
+The API requires [Bun](https://bun.sh/) as its JavaScript runtime and package manager.
+
+<CodeGroup>
+```bash macOS/Linux
+curl -fsSL https://bun.sh/install | bash
+```
+
+```bash Windows
+powershell -c "irm bun.sh/install.ps1 | iex"
+```
+</CodeGroup>
+
+Verify installation:
+
+```bash
+bun --version
+```
+
+### pnpm
+
+The Dashboard uses [pnpm](https://pnpm.io/) for package management.
+
+<CodeGroup>
+```bash npm
+npm install -g pnpm
+```
+
+```bash Homebrew
+brew install pnpm
+```
+
+```bash Script
+curl -fsSL https://get.pnpm.io/install.sh | sh -
+```
+</CodeGroup>
+
+Verify installation:
+
+```bash
+pnpm --version
+```
+
+### Docker
+
+Docker is required for running PostgreSQL locally.
+
+Download and install [Docker Desktop](https://www.docker.com/products/docker-desktop/) for your operating system.
+
+Verify installation:
+
+```bash
+docker --version
+```
+
+## Development Dependencies
+
+### API Dependencies
+
+The API uses the following core dependencies:
+
+- **Elysia** (latest) - Fast web framework for Bun
+- **Drizzle ORM** (^0.45.1) - TypeScript ORM
+- **Better Auth** (^1.4.18) - Authentication library
+- **@solana/web3.js** (^1.98.4) - Solana blockchain integration
+- **Zod** (^4.3.6) - Schema validation
+- **pg** (^8.18.0) - PostgreSQL client
+
+Dev dependencies include:
+
+- TypeScript (^5.9.3)
+- Drizzle Kit (^0.31.9) - Database migration tool
+- Bun types (latest)
+
+### Dashboard Dependencies
+
+The Dashboard uses:
+
+- **Next.js** (16.1.6) - React framework
+- **React** (19.2.3) - UI library
+- **shadcn/ui** (^3.8.4) - Component library
+- **Tailwind CSS** (^4) - Utility-first CSS framework
+- **Lucide React** (^0.564.0) - Icon library
+- **Zod** (^4.3.6) - Schema validation
+
+## IDE Recommendations
+
+### Visual Studio Code
+
+Recommended VS Code extensions:
+
+- **ESLint** - JavaScript/TypeScript linting
+- **Prettier** - Code formatting
+- **Tailwind CSS IntelliSense** - Tailwind class completion
+- **Drizzle ORM** - Database schema support
+- **TypeScript and JavaScript Language Features** (built-in)
+
+### Editor Configuration
+
+Create a `.vscode/settings.json` in your workspace:
+
+```json
+{
+  "editor.formatOnSave": true,
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint": true
+  },
+  "typescript.tsdk": "node_modules/typescript/lib",
+  "typescript.enablePromptUseWorkspaceTsdk": true
+}
+```
+
+## Next Steps
+
+Once you have all the required tools installed:
+
+1. [Set up your database](/development/database)
+2. [Run the application locally](/development/running-locally)
+3. [Configure environment variables](/development/environment-variables)

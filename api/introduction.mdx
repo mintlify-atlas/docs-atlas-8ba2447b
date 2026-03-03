@@ -1,0 +1,102 @@
+---
+title: "API Overview"
+description: "Learn about the ActumX API structure, versioning, and response formats"
+---
+
+## Base URL
+
+The ActumX API is organized around REST principles. All API endpoints are prefixed with `/v1` for versioning.
+
+```
+https://api.actumx.app
+```
+
+## API Versioning
+
+The API uses URL-based versioning. The current version is `v1`. All endpoints are prefixed with `/v1` (e.g., `/v1/agents`, `/v1/billing/summary`).
+
+## Response Format
+
+All API responses are returned in JSON format. Successful responses typically return a 200 status code with the requested data.
+
+### Success Response
+
+```json
+{
+  "agents": [
+    {
+      "id": "agent_abc123",
+      "name": "My Agent",
+      "publicKey": "7xKz...",
+      "createdAt": "2024-03-01T10:00:00Z"
+    }
+  ]
+}
+```
+
+### Error Response
+
+Error responses include an `error` field with a machine-readable error code:
+
+```json
+{
+  "error": "unauthorized"
+}
+```
+
+## HTTP Status Codes
+
+The API uses standard HTTP status codes:
+
+| Code | Meaning |
+|------|----------|
+| 200 | Success - Request completed successfully |
+| 202 | Accepted - Request accepted (used for JSON-RPC notifications) |
+| 400 | Bad Request - Invalid parameters or request body |
+| 401 | Unauthorized - Missing or invalid authentication |
+| 402 | Payment Required - x402 payment required (see [x402 Protocol](/concepts/x402-protocol)) |
+| 404 | Not Found - Resource doesn't exist |
+| 500 | Internal Server Error - Something went wrong on the server |
+
+## Error Codes
+
+Common error codes returned in the `error` field:
+
+- `unauthorized` - Authentication required or invalid
+- `missing_or_invalid_api_key` - API key missing or not valid
+- `payment_required` - x402 payment needed for this endpoint
+- `insufficient_balance` - Not enough credits to complete operation
+- `payment_not_found` - Payment ID not found
+- `invalid_payment_proof` - Payment proof doesn't match
+- `agent_not_found` - Agent ID doesn't exist or not owned by user
+
+## Rate Limiting
+
+Rate limiting is not currently enforced but may be implemented in future versions. Monitor response headers for rate limit information.
+
+## CORS
+
+The API supports CORS for requests from the dashboard origin. The following headers are allowed:
+
+- `Content-Type`
+- `Authorization`
+- `x-api-key`
+- `x-payment-id`
+- `x-payment-proof`
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Authentication" icon="key" href="/api/authentication">
+    Learn how to authenticate your API requests
+  </Card>
+  <Card title="Agents" icon="robot" href="/api/agents">
+    Create and manage Solana agents
+  </Card>
+  <Card title="x402 Protocol" icon="dollar-sign" href="/api/x402">
+    Understand payment-required endpoints
+  </Card>
+  <Card title="Billing" icon="credit-card" href="/api/billing">
+    Manage credits and top-ups
+  </Card>
+</CardGroup>

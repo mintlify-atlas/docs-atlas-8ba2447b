@@ -1,0 +1,162 @@
+---
+title: 'Initial Setup'
+description: 'Get your ActumX development environment up and running'
+icon: 'rocket'
+---
+
+## Prerequisites
+
+Before setting up ActumX, ensure you have the following tools installed:
+
+<CardGroup cols={3}>
+  <Card title="Bun" icon="bug">
+    Required for running the API server
+    
+    [Install Bun](https://bun.sh/)
+  </Card>
+  
+  <Card title="pnpm" icon="box">
+    Required for the dashboard frontend
+    
+    [Install pnpm](https://pnpm.io/)
+  </Card>
+  
+  <Card title="Docker" icon="docker">
+    Required for running PostgreSQL
+    
+    [Install Docker](https://www.docker.com/)
+  </Card>
+</CardGroup>
+
+## Setup Steps
+
+<Steps>
+  <Step title="Start PostgreSQL Database">
+    Create and start a PostgreSQL container using Docker:
+    
+    ```bash
+    docker run --name actumx-postgres \
+      -e POSTGRES_USER=postgres \
+      -e POSTGRES_PASSWORD=postgres \
+      -e POSTGRES_DB=x402 \
+      -p 5432:5432 \
+      -d postgres:latest
+    ```
+    
+    This creates a database named `x402` accessible at:
+    ```
+    postgres://postgres:postgres@localhost:5432/x402
+    ```
+  </Step>
+
+  <Step title="Configure the API">
+    Navigate to the API directory and set up environment variables:
+    
+    ```bash
+    cd api
+    cp .env.example .env
+    ```
+    
+    Your `api/.env` file should contain:
+    
+    ```bash .env
+    PORT=3001
+    DATABASE_URL=postgres://postgres:postgres@localhost:5432/x402
+    BETTER_AUTH_URL=http://localhost:3001
+    DASHBOARD_ORIGIN=http://localhost:3000
+    BETTER_AUTH_SECRET=dev-only-better-auth-secret-change-me-32-plus-characters
+    SOLANA_RPC_URL=https://api.devnet.solana.com
+    ```
+    
+    <Warning>
+      In production, use a strong random secret for `BETTER_AUTH_SECRET` (minimum 32 characters).
+    </Warning>
+  </Step>
+
+  <Step title="Install Dependencies and Run Migrations">
+    Install the API dependencies and set up the database schema:
+    
+    ```bash
+    bun install
+    bun run db:migrate
+    ```
+    
+    The `db:migrate` command creates all necessary tables for agents, API keys, billing, and x402 transactions.
+  </Step>
+
+  <Step title="Start the API Server">
+    Launch the API in development mode:
+    
+    ```bash
+    bun run dev
+    ```
+    
+    The API will be available at `http://localhost:3001`.
+    
+    <Tip>
+      Other useful commands:
+      - `bun run start` - Run without watch mode
+      - `bun run check` - Type-check the codebase
+      - `bun run db:reset` - Reset and re-run migrations
+    </Tip>
+  </Step>
+
+  <Step title="Configure the Dashboard">
+    In a new terminal, navigate to the dashboard directory:
+    
+    ```bash
+    cd dashboard
+    cp .env.example .env.local
+    ```
+    
+    Your `dashboard/.env.local` file should contain:
+    
+    ```bash .env.local
+    NEXT_PUBLIC_API_BASE_URL=http://localhost:3001
+    ```
+  </Step>
+
+  <Step title="Start the Dashboard">
+    Install dependencies and launch the dashboard:
+    
+    ```bash
+    pnpm install
+    pnpm dev
+    ```
+    
+    The dashboard will be available at `http://localhost:3000`.
+  </Step>
+</Steps>
+
+## Verify Installation
+
+Once both servers are running, you should be able to:
+
+1. Access the dashboard at `http://localhost:3000`
+2. Create a new account
+3. Navigate through the dashboard UI
+4. Access API health check at `http://localhost:3001/health`
+
+<Check>
+  Your ActumX development environment is now ready! Proceed to create your first agent.
+</Check>
+
+## Project Structure
+
+```
+x402/
+├── api/        # Elysia server, DB schema, auth, x402 modules
+└── dashboard/  # Next.js dashboard UI
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Create Agents" icon="robot" href="/guides/creating-agents">
+    Set up your first AI agent with a Solana wallet
+  </Card>
+  
+  <Card title="Manage API Keys" icon="key" href="/guides/managing-api-keys">
+    Generate API keys for authenticating requests
+  </Card>
+</CardGroup>

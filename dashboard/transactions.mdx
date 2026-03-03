@@ -1,0 +1,394 @@
+---
+title: Transactions Dashboard
+description: Monitor x402 payment transactions and usage events
+---
+
+The Transactions page provides detailed visibility into all x402 protocol payment flows, including challenge-response cycles, settlement events, and usage tracking.
+
+## Transaction Overview
+
+The x402 Transactions page displays all payment protocol interactions between your agents and paid APIs.
+
+### What are x402 Transactions?
+
+x402 is an HTTP status code and payment protocol for pay-per-use APIs:
+
+- **Challenge** - API requests payment for access
+- **Response** - Agent provides payment proof
+- **Settlement** - Transaction completes and records usage
+
+Each entry in the transactions table represents one complete x402 payment flow.
+
+## Viewing Transaction History
+
+The main transactions table displays all transaction records with comprehensive details.
+
+### Transaction Table Columns
+
+**ID**
+- Unique transaction identifier
+- Format: `tx_[random_string]`
+- Displayed in monospace font for easy copying
+
+**Endpoint**
+- HTTP method and API endpoint path
+- Format: `METHOD /path/to/endpoint`
+- Examples:
+  - `POST /v1/agents`
+  - `GET /v1/transactions`
+  - `PUT /v1/agents/123`
+
+**Amount**
+- Transaction cost in USD
+- Formatted as currency (e.g., $0.10, $1.50)
+- Price charged for this specific API request
+
+**Status**
+- Current transaction state
+- Displayed as a colored badge
+- See [Transaction Statuses](#transaction-statuses) below
+
+**Updated**
+- Timestamp of last status change
+- Human-readable format
+- Example: "Jan 15, 2026 2:30 PM"
+
+### Transaction Table Example
+
+```
+ID                  Endpoint               Amount    Status      Updated
+tx_1234567890      POST /v1/agents        $0.10     completed   Jan 15, 2:30 PM
+tx_0987654321      GET /v1/orders         $0.05     completed   Jan 15, 2:28 PM
+tx_abcdef12345     PUT /v1/agents/1       $0.08     pending     Jan 15, 2:25 PM
+```
+
+## Transaction Statuses
+
+Each transaction progresses through different states in the x402 lifecycle.
+
+### Status Types
+
+**Completed** (Green Badge)
+- Payment successfully processed
+- API request was fulfilled
+- Credits deducted from account
+- Final state for successful transactions
+
+**Pending** (Gray Badge)
+- Payment in progress
+- Awaiting blockchain confirmation
+- Challenge issued but not yet settled
+- May transition to completed or failed
+
+**Failed** (Red Badge)
+- Payment unsuccessful
+- API request was not fulfilled
+- Credits not deducted
+- Possible reasons:
+  - Insufficient balance
+  - Network error
+  - Invalid payment proof
+  - Timeout
+
+**Challenged** (Yellow Badge)
+- Server issued payment request
+- Agent has not yet responded
+- Awaiting payment proof
+- Will timeout if no response
+
+## x402 Transaction Details
+
+Understanding the payment flow for each transaction.
+
+### Transaction Lifecycle
+
+1. **Agent Makes Request**
+   - Agent calls paid API endpoint
+   - Request includes no payment initially
+
+2. **Server Issues Challenge**
+   - API responds with 402 Payment Required
+   - Includes payment details (amount, address)
+   - Transaction status: `challenged`
+
+3. **Agent Provides Payment**
+   - Agent wallet signs payment transaction
+   - Submits payment proof to server
+   - Transaction status: `pending`
+
+4. **Server Validates Payment**
+   - Verifies payment on blockchain
+   - Confirms amount and recipient
+   - Checks signature validity
+
+5. **Transaction Settles**
+   - Payment accepted
+   - API request fulfilled
+   - Transaction status: `completed`
+   - Usage event recorded
+
+### Challenge-Response Flow
+
+```mermaid
+sequenceDiagram
+    Agent->>API: Request resource
+    API->>Agent: 402 Payment Required
+    Agent->>Blockchain: Submit payment
+    Agent->>API: Retry with proof
+    API->>Blockchain: Verify payment
+    API->>Agent: 200 OK + Resource
+```
+
+<Note>
+The ActumX SDK handles the entire challenge-response flow automatically. Your agent code doesn't need to manually process 402 responses.
+</Note>
+
+## Usage Events
+
+Detailed billing records for each settled transaction.
+
+### What are Usage Events?
+
+Usage events are created when x402 transactions complete successfully:
+
+- Record of API consumption
+- Billing line item
+- Cost breakdown per request
+- Timestamp for audit trail
+
+### Viewing Usage Events
+
+Navigate to the Usage page to see detailed usage event data.
+
+### Usage Event Details
+
+**Event ID**
+- Unique identifier for the usage event
+- Format: `ue_[random_string]`
+
+**Endpoint**
+- API endpoint that was accessed
+- HTTP method and path
+
+**Cost**
+- Amount charged for this request
+- Formatted as currency
+- Deducted from account credits
+
+**Time**
+- When the usage event was recorded
+- Corresponds to transaction settlement time
+
+### Usage Events Table Example
+
+```
+Event               Endpoint                  Cost      Time
+ue_1234567890      POST /v1/agents           $0.10     Jan 15, 2:30 PM
+ue_0987654321      GET /v1/transactions      $0.05     Jan 15, 2:28 PM
+ue_abcdef12345     POST /v1/api-keys         $0.03     Jan 15, 2:25 PM
+```
+
+## Filtering and Search
+
+<Note>
+Filtering and search features are planned for future releases. Currently, transactions are displayed in reverse chronological order (newest first).
+</Note>
+
+### Planned Features
+
+- Filter by status (completed, pending, failed)
+- Filter by date range
+- Search by transaction ID
+- Filter by endpoint
+- Filter by agent
+- Export to CSV
+
+## Transaction Monitoring
+
+### Real-Time Updates
+
+The transactions page shows the current state of all payments:
+
+- Refresh the page to see latest transactions
+- Status updates automatically as transactions progress
+- New transactions appear at the top of the list
+
+### Monitoring Best Practices
+
+<Tip>
+**Track Agent Activity**
+
+- Review transactions regularly
+- Watch for unusual patterns
+- Monitor pending transactions
+- Investigate failed transactions
+- Track spending per endpoint
+</Tip>
+
+### Common Monitoring Tasks
+
+1. **Check Recent Activity**
+   - View latest transactions to confirm agent operations
+   - Verify expected API calls are occurring
+
+2. **Identify Issues**
+   - Look for failed transactions
+   - Check for stuck pending transactions
+   - Monitor error patterns
+
+3. **Cost Analysis**
+   - Review amounts per endpoint
+   - Calculate total spending
+   - Identify expensive operations
+
+4. **Audit Trail**
+   - Maintain record of all payments
+   - Track transaction timestamps
+   - Verify billing accuracy
+
+## Understanding Costs
+
+### Per-Request Pricing
+
+Each API endpoint has its own pricing:
+
+- Prices shown in the Amount column
+- Charged per successful request
+- Failed transactions incur no cost
+
+### Cost Breakdown
+
+Total costs come from:
+
+1. **API Request Fees** - Per-endpoint charges
+2. **Blockchain Gas Fees** - Transaction costs (if applicable)
+3. **Platform Fees** - ActumX service fees (if applicable)
+
+### Optimizing Costs
+
+- Cache responses when possible
+- Batch operations where supported
+- Use appropriate endpoints (don't over-fetch data)
+- Monitor usage patterns to identify optimization opportunities
+
+## Troubleshooting
+
+### Pending Transactions Stuck
+
+**Possible causes:**
+
+- Blockchain confirmation delay
+- Network congestion
+- Payment verification in progress
+
+**Solutions:**
+
+1. Wait 1-2 minutes for normal processing
+2. Refresh the page to check status
+3. Check Solana network status
+4. Contact support if stuck longer than 5 minutes
+
+### Failed Transactions
+
+**Common reasons:**
+
+- Insufficient wallet balance
+- Invalid payment signature
+- Network timeout
+- API endpoint error
+
+**Solutions:**
+
+1. **Check Balance** - Ensure agent wallet has sufficient SOL
+2. **Fund Wallet** - Add funds via [Dashboard](/dashboard/agents)
+3. **Retry Request** - Agent should automatically retry
+4. **Check Logs** - Review application logs for errors
+
+### Transaction Not Appearing
+
+1. Refresh the page
+2. Check if request reached the API (check application logs)
+3. Verify agent is configured correctly
+4. Ensure API endpoint requires payment (uses x402)
+
+### Amount Discrepancy
+
+1. Compare Amount to expected endpoint pricing
+2. Check if pricing has changed
+3. Verify transaction ID matches usage event
+4. Contact support with transaction ID if amount is incorrect
+
+## Transaction Data Retention
+
+All transaction history is retained indefinitely:
+
+- Complete audit trail available
+- No automatic deletion
+- Historical data for compliance and analysis
+
+## Security and Privacy
+
+### Transaction Security
+
+- All payment proofs are cryptographically signed
+- Blockchain verification ensures payment authenticity
+- Cannot be replayed or forged
+
+### Data Access
+
+- Only you can view your transactions
+- API keys provide access to transaction data
+- Secure HTTPS connections only
+
+## Integration with Other Pages
+
+### Related Dashboard Sections
+
+**Billing Page**
+- View overall credit balance
+- Top up credits for future transactions
+- Review payment intent history
+
+**Usage Page**
+- Detailed cost breakdown per event
+- Endpoint-specific usage analytics
+- Time-based usage reports
+
+**Dashboard Page**
+- Quick view of recent transactions
+- Agent balance overview
+- Link to full transaction history
+
+## API Access
+
+Access transaction data programmatically:
+
+```bash
+curl https://api.actumx.ai/v1/transactions \
+  -H "Authorization: Bearer axk_your_api_key_here"
+```
+
+### Response Format
+
+```json
+{
+  "transactions": [
+    {
+      "id": "tx_1234567890",
+      "method": "POST",
+      "endpoint": "/v1/agents",
+      "amountCents": 10,
+      "status": "completed",
+      "updatedAt": "2026-01-15T14:30:00Z"
+    }
+  ]
+}
+```
+
+## Next Steps
+
+- [View usage events](/dashboard/billing#usage-events)
+- [Understand x402 protocol](/concepts/x402-protocol)
+- [Fund agent wallets](/dashboard/agents#funding-devnet-wallets)
+- [Manage billing and credits](/dashboard/billing)
+- [View activity API reference](/api/activity)
