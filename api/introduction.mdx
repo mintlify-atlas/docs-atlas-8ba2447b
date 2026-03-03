@@ -84,6 +84,24 @@ The API supports CORS for requests from the dashboard origin. The following head
 - `x-payment-id`
 - `x-payment-proof`
 
+## Health Check
+
+The API provides a health check endpoint for monitoring:
+
+```bash
+GET /health
+```
+
+**Response:**
+```json
+{
+  "status": "ok",
+  "service": "x402-api"
+}
+```
+
+This endpoint requires no authentication and can be used for uptime monitoring and health checks.
+
 ## Next Steps
 
 <CardGroup cols={2}>
